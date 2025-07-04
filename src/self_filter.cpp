@@ -145,7 +145,7 @@ namespace robot_self_filter
         if (!sf_xyz)
           return;
         auto mask = sf_xyz->getSelfMaskPtr();
-        publishShapesFromMask(mask);
+        publishShapesFromMask(mask, cloud->header.frame_id);
         break;
       }
       case SensorType::OusterSensor:
@@ -154,7 +154,7 @@ namespace robot_self_filter
         if (!sf_ouster)
           return;
         auto mask = sf_ouster->getSelfMaskPtr();
-        publishShapesFromMask(mask);
+        publishShapesFromMask(mask, cloud->header.frame_id);
         break;
       }
       default:
@@ -164,7 +164,7 @@ namespace robot_self_filter
     }
 
     template <typename PointT>
-    void publishShapesFromMask(robot_self_filter::SelfMask<PointT> *mask)
+    void publishShapesFromMask(robot_self_filter::SelfMask<PointT> *mask, const std::string &pointcloud_frame)
     {
       if (!mask)
         return;
@@ -178,7 +178,7 @@ namespace robot_self_filter
       visualization_msgs::msg::MarkerArray marker_array;
       marker_array.markers.reserve(bodies.size());
 
-      std::string shapes_frame = sensor_frame_.empty() ? "map" : sensor_frame_;
+      std::string shapes_frame = pointcloud_frame.empty() ? "map" : pointcloud_frame;
       for (size_t i = 0; i < bodies.size(); ++i)
       {
         const auto &see_link = bodies[i];
