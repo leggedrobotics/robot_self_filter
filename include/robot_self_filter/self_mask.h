@@ -216,7 +216,7 @@ public:
 
   void assumeFrame(const std_msgs::msg::Header &header)
   {
-    rclcpp::Time transform_time(header.stamp.sec, header.stamp.nanosec, RCL_SYSTEM_TIME);
+    rclcpp::Time transform_time(header.stamp.sec, header.stamp.nanosec, node_->get_clock()->get_clock_type());
     for (auto &sl : bodies_)
     {
       try
@@ -260,7 +260,7 @@ public:
                    const double min_sensor_dist)
   {
     assumeFrame(header);
-    rclcpp::Time transform_time(header.stamp.sec, header.stamp.nanosec, RCL_SYSTEM_TIME);
+    rclcpp::Time transform_time(header.stamp.sec, header.stamp.nanosec, node_->get_clock()->get_clock_type());
 
     if (!sensor_frame.empty())
     {
