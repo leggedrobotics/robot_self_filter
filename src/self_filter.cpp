@@ -178,7 +178,7 @@ namespace robot_self_filter
       visualization_msgs::msg::MarkerArray marker_array;
       marker_array.markers.reserve(bodies.size());
 
-      std::string shapes_frame = "BASE";
+      std::string shapes_frame = pointcloud_frame;
       for (size_t i = 0; i < bodies.size(); ++i)
       {
         const auto &see_link = bodies[i];
