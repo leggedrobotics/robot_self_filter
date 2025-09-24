@@ -26,6 +26,7 @@
   <!-- or if you require pure PCL, maybe: <build_depend>pcl_conversions</build_depend> -->
   <build_depend>bullet</build_depend>
   <build_depend>assimp</build_depend>
+  <build_depend>tinyxml_vendor</build_depend>
 
   <!-- Execution dependencies -->
   <exec_depend>rclcpp</exec_depend>
@@ -40,6 +41,7 @@
   <exec_depend>bullet</exec_depend>
   <exec_depend>assimp</exec_depend>
   <exec_depend>filters</exec_depend>
+  <exec_depend>tinyxml_vendor</exec_depend>
   <!-- Export -->
   <export>
     <build_type>ament_cmake</build_type>

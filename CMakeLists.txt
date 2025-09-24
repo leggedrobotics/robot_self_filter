@@ -25,6 +25,8 @@ find_package(pcl_conversions REQUIRED)
 find_package(pcl_msgs QUIET)  # optional
 find_package(pcl_ros REQUIRED) # or use pure PCL, depending on your usage
 find_package(filters REQUIRED)
+find_package(tinyxml_vendor REQUIRED)
+find_package(TinyXML REQUIRED)
 # Bullet
 find_package(Bullet REQUIRED)
 
@@ -49,6 +51,7 @@ include_directories(
   ${PCL_INCLUDE_DIRS}
   ${FILTERS_INCLUDE_DIRS}
   ${YAML_CPP_INCLUDE_DIRS}
+  ${TinyXML_INCLUDE_DIRS}
 )
 
 #
@@ -78,6 +81,7 @@ target_link_libraries(robot_geometric_shapes
   ${BULLET_LIBRARIES}
   ${ASSIMP_LIBRARIES}
   ${PCL_LIBRARIES}
+  ${TinyXML_LIBRARIES}
 )
 
 add_library(${PROJECT_NAME}
@@ -127,6 +131,7 @@ ament_target_dependencies(robot_geometric_shapes
   visualization_msgs
   pcl_ros  # or pcl_conversions
   filters
+  tinyxml_vendor
 )
 
 ament_target_dependencies(${PROJECT_NAME}
@@ -140,6 +145,7 @@ ament_target_dependencies(${PROJECT_NAME}
   visualization_msgs
   pcl_ros  # or pcl_conversions
   filters
+  tinyxml_vendor
 )
 
 # ament_target_dependencies(test_filter
@@ -166,6 +172,7 @@ ament_target_dependencies(self_filter
   visualization_msgs
   pcl_ros  # or pcl_conversions
   filters
+  tinyxml_vendor
 )
 
 #
@@ -217,6 +224,7 @@ ament_export_dependencies(
   visualization_msgs
   pcl_ros
   assimp
+  tinyxml_vendor
   # bullet  <-- Usually remove this, unless you have a custom bullet ROS package
 )
 
