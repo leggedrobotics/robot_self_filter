@@ -18,7 +18,7 @@
 // ROS 2
 #include <rclcpp/rclcpp.hpp>               
 #include <resource_retriever/retriever.hpp>  
-#include <tinyxml.h>
+#include <tinyxml2.h>
 
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
@@ -202,22 +202,22 @@ float getMeshUnitRescale(const std::string& resource_path)
   if (res.size == 0)
     return unit_scale;
 
-  TiXmlDocument xmlDoc;
+  tinyxml2::XMLDocument xml_doc;
   const char* data = reinterpret_cast<const char*>(res.data.get());
-  xmlDoc.Parse(data);
+  const auto error = xml_doc.Parse(data, res.size);
 
-  if (!xmlDoc.Error())
+  if (error == tinyxml2::XML_SUCCESS)
   {
-    TiXmlElement* colladaXml = xmlDoc.FirstChildElement("COLLADA");
-    if (colladaXml)
+    const auto* collada_xml = xml_doc.FirstChildElement("COLLADA");
+    if (collada_xml != nullptr)
     {
-      TiXmlElement* assetXml = colladaXml->FirstChildElement("asset");
-      if (assetXml)
+      const auto* asset_xml = collada_xml->FirstChildElement("asset");
+      if (asset_xml != nullptr)
       {
-        TiXmlElement* unitXml = assetXml->FirstChildElement("unit");
-        if (unitXml && unitXml->Attribute("meter"))
+        const auto* unit_xml = asset_xml->FirstChildElement("unit");
+        if (unit_xml != nullptr && unit_xml->FindAttribute("meter") != nullptr)
         {
-          if (unitXml->QueryFloatAttribute("meter", &unit_scale) != 0)
+          if (unit_xml->QueryFloatAttribute("meter", &unit_scale) != tinyxml2::XML_SUCCESS)
           {
             RCLCPP_WARN(LOGGER,
                         "Failed to convert unit element meter attribute for [%s]. Using default scale=1.0",

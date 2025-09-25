@@ -1,5 +1,13 @@
 cmake_minimum_required(VERSION 3.8)
+cmake_policy(VERSION 3.28)
+
 project(robot_self_filter)
+
+unset(FLANN_ROOT CACHE)
+unset(FLANN_ROOT)
+if(DEFINED ENV{FLANN_ROOT})
+  set(ENV{FLANN_ROOT} "")
+endif()
 
 # Set C++ standard
 if(NOT CMAKE_CXX_STANDARD)
@@ -25,8 +33,8 @@ find_package(pcl_conversions REQUIRED)
 find_package(pcl_msgs QUIET)  # optional
 find_package(pcl_ros REQUIRED) # or use pure PCL, depending on your usage
 find_package(filters REQUIRED)
-find_package(tinyxml_vendor REQUIRED)
-find_package(TinyXML REQUIRED)
+find_package(tinyxml2_vendor REQUIRED)
+find_package(TinyXML2 REQUIRED)
 # Bullet
 find_package(Bullet REQUIRED)
 
@@ -51,7 +59,6 @@ include_directories(
   ${PCL_INCLUDE_DIRS}
   ${FILTERS_INCLUDE_DIRS}
   ${YAML_CPP_INCLUDE_DIRS}
-  ${TinyXML_INCLUDE_DIRS}
 )
 
 #
@@ -81,7 +88,7 @@ target_link_libraries(robot_geometric_shapes
   ${BULLET_LIBRARIES}
   ${ASSIMP_LIBRARIES}
   ${PCL_LIBRARIES}
-  ${TinyXML_LIBRARIES}
+  tinyxml2::tinyxml2
 )
 
 add_library(${PROJECT_NAME}
@@ -131,7 +138,7 @@ ament_target_dependencies(robot_geometric_shapes
   visualization_msgs
   pcl_ros  # or pcl_conversions
   filters
-  tinyxml_vendor
+  tinyxml2_vendor
 )
 
 ament_target_dependencies(${PROJECT_NAME}
@@ -145,7 +152,7 @@ ament_target_dependencies(${PROJECT_NAME}
   visualization_msgs
   pcl_ros  # or pcl_conversions
   filters
-  tinyxml_vendor
+  tinyxml2_vendor
 )
 
 # ament_target_dependencies(test_filter
@@ -172,7 +179,7 @@ ament_target_dependencies(self_filter
   visualization_msgs
   pcl_ros  # or pcl_conversions
   filters
-  tinyxml_vendor
+  tinyxml2_vendor
 )
 
 #
@@ -224,7 +231,7 @@ ament_export_dependencies(
   visualization_msgs
   pcl_ros
   assimp
-  tinyxml_vendor
+  tinyxml2_vendor
   # bullet  <-- Usually remove this, unless you have a custom bullet ROS package
 )
 
