@@ -77,8 +77,10 @@ namespace robot_self_filter
               this->get_node_timers_interface()));
       tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
+      // Publish filtered cloud as sensor data QoS (BEST_EFFORT) for high-rate streams
       pointCloudPublisher_ =
-          this->create_publisher<sensor_msgs::msg::PointCloud2>("cloud_out", 1);
+          this->create_publisher<sensor_msgs::msg::PointCloud2>(
+              "cloud_out", rclcpp::SensorDataQoS());
 
       marker_pub_ =
           this->create_publisher<visualization_msgs::msg::MarkerArray>("collision_shapes", 1);
@@ -115,9 +117,11 @@ namespace robot_self_filter
 
       self_filter_->getLinkNames(frames_);
 
+      // Subscribe to input cloud with sensor data QoS (BEST_EFFORT)
+      rclcpp::QoS input_qos = rclcpp::SensorDataQoS();
       sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
           in_topic_,
-          rclcpp::SensorDataQoS(),
+          input_qos,
           std::bind(&SelfFilterNode::cloudCallback, this, std::placeholders::_1));
     }
 
