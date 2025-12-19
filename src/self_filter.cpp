@@ -119,6 +119,9 @@ namespace robot_self_filter
           in_topic_,
           rclcpp::SensorDataQoS(),
           std::bind(&SelfFilterNode::cloudCallback, this, std::placeholders::_1));
+
+      // Add custom sand filter box underneath shovel
+      addCustomSandFilterBox();
     }
 
   private:
@@ -283,6 +286,96 @@ namespace robot_self_filter
       marker_pub_->publish(marker_array);
       RCLCPP_INFO(this->get_logger(), "Published %zu collision shapes", marker_array.markers.size());
     }
+
+    void addCustomSandFilterBox()
+    {
+      // Parameters for sand filter box
+      // Use BASE frame (fixed to ground) so offset is always truly "down" in world coordinates
+      const std::string base_frame = "BASE";  // Fixed frame (Z always points up)
+      const std::string shovel_link = "SHOVEL_1300";  // Reference link to track position
+      const std::string custom_name = "SHOVEL_SAND_FILTER";
+      
+      // Box dimensions (width, depth, height in meters)
+      const double box_width = 1.0;   // x-direction
+      const double box_depth = 1.0;    // y-direction  
+      const double box_height = 1.8;   // z-direction (increased from 0.3 to make it taller)
+      
+      // Shovel collision box center is at X=0.40, Y=0, Z=0.21 from SHOVEL_1300 origin
+      // Position filter box underneath the shovel center
+      const double shovel_center_x = 0.40;  // From URDF collision origin
+      const double shovel_center_y = 0.0;
+      const double offset_toward_robot = 0.0;  // Adjust to move toward robot body (negative)
+      
+      tf2::Transform relative_transform;
+      relative_transform.setIdentity();
+      relative_transform.setOrigin(tf2::Vector3(
+        shovel_center_x + offset_toward_robot,  // X: centered under shovel, adjust with offset
+        shovel_center_y,                         // Y: centered
+        1.15));                                  // Z: height (in world/BASE frame)  
+      
+      // Create box shape
+      shapes::Box *box_shape = new shapes::Box(box_width, box_depth, box_height);
+      
+      // Create bodies from shape
+      bodies::Box *scaled_body = new bodies::Box(box_shape);
+      scaled_body->setScale(1.0, 1.0, 1.0);  // No scaling
+      scaled_body->setPadding(0.0, 0.0, 0.0);  // No padding
+      
+      bodies::Box *unscaled_body = new bodies::Box(box_shape);
+      unscaled_body->setScale(1.0, 1.0, 1.0);
+      unscaled_body->setPadding(0.0, 0.0, 0.0);
+      
+      // Get SelfMask pointer and add custom body
+      if (sensor_type_ == SensorType::XYZSensor)
+      {
+        auto sf_xyz = std::dynamic_pointer_cast<filters::SelfFilter<pcl::PointXYZ>>(self_filter_);
+        if (sf_xyz)
+        {
+          sf_xyz->getSelfMaskPtr()->addCustomBody(
+            sensor_frame_,  // Use sensor frame as parent (point cloud frame)
+            relative_transform,
+            scaled_body,
+            unscaled_body,
+            custom_name,
+            true,  // fixed_orientation = true (keep box horizontal)
+            shovel_link  // reference_link = shovel to track its position
+          );
+          RCLCPP_INFO(this->get_logger(), "Added custom sand filter box underneath %s", shovel_link.c_str());
+        }
+      }
+      else if (sensor_type_ == SensorType::OusterSensor)
+      {
+        auto sf_ouster = std::dynamic_pointer_cast<filters::SelfFilter<PointOuster>>(self_filter_);
+        if (sf_ouster)
+        {
+          sf_ouster->getSelfMaskPtr()->addCustomBody(
+            base_frame,  // Use BASE frame (fixed to ground, Z always up)
+            relative_transform,
+            scaled_body,
+            unscaled_body,
+            custom_name,
+            true,  // fixed_orientation = true (keep box horizontal)
+            shovel_link  // reference_link = shovel to track its position
+          );
+          RCLCPP_INFO(this->get_logger(), "Added custom sand filter box above %s", shovel_link.c_str());
+        }
+      }
+      else
+      {
+        // Clean up if sensor type not supported
+        delete scaled_body;
+        delete unscaled_body;
+        delete box_shape;
+        RCLCPP_WARN(this->get_logger(), "Sand filter box not supported for current sensor type");
+        return;
+      }
+      
+      // Clean up shape (bodies own their copies)
+      delete box_shape;
+    }
+
+
+
 
     std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;

@@ -120,12 +120,14 @@ class SelfMask
 protected:
   struct SeeLink
   {
-    SeeLink() : body(nullptr), unscaledBody(nullptr), volume(0.0) {}
+    SeeLink() : body(nullptr), unscaledBody(nullptr), volume(0.0), fixed_orientation(false) {}
     std::string      name;
     bodies::Body    *body;
     bodies::Body    *unscaledBody;
     tf2::Transform   constTransf;
     double           volume;
+    bool             fixed_orientation;  // If true, keep orientation horizontal (world frame)
+    std::string      reference_link;      // For fixed_orientation: link to track position (e.g., SHOVEL_1300)
   };
 
   struct SortBodies
@@ -235,8 +237,86 @@ public:
             transform_stamped.transform.translation.z);
 
         tf2::Transform tf2_transform(q, t);
-        sl.body->setPose(tf2_transform * sl.constTransf);
-        sl.unscaledBody->setPose(tf2_transform * sl.constTransf);
+        
+        if (sl.fixed_orientation && !sl.reference_link.empty())
+        {
+          // For fixed orientation: look up reference link position in parent frame (BASE), apply offset,
+          // then transform to point cloud frame. This ensures offset is truly "down" in world coordinates.
+          try
+          {
+            // Look up reference link (e.g., SHOVEL_1300) position in parent frame (e.g., BASE)
+            auto ref_transform_stamped = tf_buffer_.lookupTransform(
+              sl.name,  // Parent frame (e.g., BASE) - fixed to ground, Z always up
+              sl.reference_link,  // Reference link (e.g., SHOVEL_1300)
+              transform_time, rclcpp::Duration(std::chrono::milliseconds(100)));
+            tf2::Vector3 ref_t(
+                ref_transform_stamped.transform.translation.x,
+                ref_transform_stamped.transform.translation.y,
+                ref_transform_stamped.transform.translation.z);
+            
+            // Get shovel rotation and extract yaw (horizontal rotation only)
+            tf2::Quaternion ref_q(
+                ref_transform_stamped.transform.rotation.x,
+                ref_transform_stamped.transform.rotation.y,
+                ref_transform_stamped.transform.rotation.z,
+                ref_transform_stamped.transform.rotation.w);
+            double roll, pitch, yaw;
+            tf2::Matrix3x3(ref_q).getRPY(roll, pitch, yaw);
+            
+            // Create yaw-only rotation to rotate offset with shovel's horizontal direction
+            tf2::Quaternion yaw_only;
+            yaw_only.setRPY(0, 0, yaw);
+            
+            // Rotate offset by shovel's yaw so -X is always "toward robot body"
+            tf2::Vector3 offset = sl.constTransf.getOrigin();
+            tf2::Vector3 rotated_offset = tf2::quatRotate(yaw_only, offset);
+            
+            // Apply rotated offset in parent frame
+            tf2::Vector3 box_pos_in_parent = ref_t + rotated_offset;
+            
+            // Transform from parent frame (BASE) to point cloud frame for filtering
+            auto parent_to_pc = tf_buffer_.lookupTransform(
+              header.frame_id, sl.name,
+              transform_time, rclcpp::Duration(std::chrono::milliseconds(100)));
+            tf2::Quaternion parent_q(
+                parent_to_pc.transform.rotation.x,
+                parent_to_pc.transform.rotation.y,
+                parent_to_pc.transform.rotation.z,
+                parent_to_pc.transform.rotation.w);
+            tf2::Vector3 parent_t(
+                parent_to_pc.transform.translation.x,
+                parent_to_pc.transform.translation.y,
+                parent_to_pc.transform.translation.z);
+            tf2::Transform parent_to_pc_tf(parent_q, parent_t);
+            
+            // Transform box position to point cloud frame
+            tf2::Vector3 box_pos = parent_to_pc_tf * box_pos_in_parent;
+            
+            // Use identity rotation (horizontal) - box stays horizontal regardless of frame
+            tf2::Transform fixed_transform(tf2::Quaternion::getIdentity(), box_pos);
+            sl.body->setPose(fixed_transform);
+            sl.unscaledBody->setPose(fixed_transform);
+          }
+          catch(...)
+          {
+            // Fallback: use regular transform if reference link lookup fails
+            sl.body->setPose(tf2_transform * sl.constTransf);
+            sl.unscaledBody->setPose(tf2_transform * sl.constTransf);
+          }
+        }
+        else if (sl.fixed_orientation)
+        {
+          // For fixed orientation without reference link: use translation from TF, but keep orientation horizontal
+          tf2::Vector3 transformed_pos = tf2_transform * sl.constTransf.getOrigin();
+          tf2::Transform fixed_transform(tf2::Quaternion::getIdentity(), transformed_pos);
+          sl.body->setPose(fixed_transform);
+          sl.unscaledBody->setPose(fixed_transform);
+        }
+        else
+        {
+          sl.body->setPose(tf2_transform * sl.constTransf);
+          sl.unscaledBody->setPose(tf2_transform * sl.constTransf);
+        }
       }
       catch(...)
       {
@@ -340,6 +420,36 @@ public:
   const std::vector<SeeLink>& getBodies() const
   {
     return bodies_;
+  }
+
+  void addCustomBody(
+    const std::string &parent_link_name,
+    const tf2::Transform &relative_transform,
+    bodies::Body *body,
+    bodies::Body *unscaled_body,
+    const std::string &custom_name = "",
+    bool fixed_orientation = false,
+    const std::string &reference_link = "")
+  {
+    SeeLink sl;
+    // Use parent link name for TF lookup (assumeFrame uses sl.name for TF)
+    sl.name = parent_link_name;
+    sl.body = body;
+    sl.unscaledBody = unscaled_body;
+    sl.constTransf = relative_transform;
+    sl.volume = body ? body->computeVolume() : 0.0;
+    sl.fixed_orientation = fixed_orientation;
+    sl.reference_link = reference_link;
+    
+    bodies_.push_back(sl);
+    
+    // Re-sort by volume (largest first)
+    std::sort(bodies_.begin(), bodies_.end(), SortBodies());
+    
+    // Recompute bounding spheres
+    bspheres_.resize(bodies_.size());
+    bspheresRadius2_.resize(bodies_.size());
+    computeBoundingSpheres();
   }
 
 protected:
