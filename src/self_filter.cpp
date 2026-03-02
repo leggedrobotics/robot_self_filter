@@ -4,6 +4,7 @@
 #include <memory>
 
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp_lifecycle/lifecycle_node.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/create_timer_ros.h>
@@ -33,11 +34,13 @@ namespace robot_self_filter
     PandarSensor = 5,
   };
 
-  class SelfFilterNode : public rclcpp::Node
+  class SelfFilterNode : public rclcpp_lifecycle::LifecycleNode
   {
   public:
+    using CallbackReturn = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
+
     SelfFilterNode()
-        : Node("self_filter")
+        : rclcpp_lifecycle::LifecycleNode("self_filter")
     {
       try
       {
@@ -48,14 +51,16 @@ namespace robot_self_filter
       {
       }
 
-      this->declare_parameter<std::string>("sensor_frame", "Lidar"); // Default value
-      // this->set_parameter(rclcpp::Parameter("sensor_frame", "Lidar")); // Removed explicit set
+      this->declare_parameter<std::string>("sensor_frame", "Lidar");
       this->declare_parameter<bool>("use_rgb", false);
       this->declare_parameter<int>("max_queue_size", 10);
       this->declare_parameter<int>("lidar_sensor_type", 0);
       this->declare_parameter<std::string>("robot_description", "");
       this->declare_parameter<std::string>("in_pointcloud_topic", "/cloud_in");
+    }
 
+    CallbackReturn on_configure(const rclcpp_lifecycle::State &)
+    {
       sensor_frame_ = this->get_parameter("sensor_frame").as_string();
       use_rgb_ = this->get_parameter("use_rgb").as_bool();
       max_queue_size_ = this->get_parameter("max_queue_size").as_int();
@@ -63,10 +68,8 @@ namespace robot_self_filter
       sensor_type_ = static_cast<SensorType>(temp_sensor_type);
       in_topic_ = this->get_parameter("in_pointcloud_topic").as_string();
 
-      RCLCPP_INFO(this->get_logger(), "Parameters:");
+      RCLCPP_INFO(this->get_logger(), "Configuring SelfFilterNode:");
       RCLCPP_INFO(this->get_logger(), "  sensor_frame: %s", sensor_frame_.c_str());
-      RCLCPP_INFO(this->get_logger(), "  use_rgb: %s", use_rgb_ ? "true" : "false");
-      RCLCPP_INFO(this->get_logger(), "  max_queue_size: %d", max_queue_size_);
       RCLCPP_INFO(this->get_logger(), "  lidar_sensor_type: %d", temp_sensor_type);
       RCLCPP_INFO(this->get_logger(), "  in_pointcloud_topic: %s", in_topic_.c_str());
 
@@ -77,13 +80,50 @@ namespace robot_self_filter
               this->get_node_timers_interface()));
       tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
-      // Publish filtered cloud as sensor data QoS (BEST_EFFORT) for high-rate streams
       pointCloudPublisher_ =
           this->create_publisher<sensor_msgs::msg::PointCloud2>(
               "cloud_out", rclcpp::SensorDataQoS());
 
       marker_pub_ =
           this->create_publisher<visualization_msgs::msg::MarkerArray>("collision_shapes", 1);
+
+      return CallbackReturn::SUCCESS;
+    }
+
+    CallbackReturn on_activate(const rclcpp_lifecycle::State & state)
+    {
+      LifecycleNode::on_activate(state);
+      RCLCPP_INFO(this->get_logger(), "Activating SelfFilterNode — starting point cloud subscription");
+      initSelfFilter();
+      return CallbackReturn::SUCCESS;
+    }
+
+    CallbackReturn on_deactivate(const rclcpp_lifecycle::State & state)
+    {
+      RCLCPP_INFO(this->get_logger(), "Deactivating SelfFilterNode — stopping subscription");
+      sub_.reset();
+      self_filter_.reset();
+      frames_.clear();
+      LifecycleNode::on_deactivate(state);
+      return CallbackReturn::SUCCESS;
+    }
+
+    CallbackReturn on_cleanup(const rclcpp_lifecycle::State &)
+    {
+      tf_listener_.reset();
+      tf_buffer_.reset();
+      pointCloudPublisher_.reset();
+      marker_pub_.reset();
+      return CallbackReturn::SUCCESS;
+    }
+
+    CallbackReturn on_shutdown(const rclcpp_lifecycle::State &)
+    {
+      sub_.reset();
+      self_filter_.reset();
+      tf_listener_.reset();
+      tf_buffer_.reset();
+      return CallbackReturn::SUCCESS;
     }
 
     void initSelfFilter()
@@ -117,7 +157,6 @@ namespace robot_self_filter
 
       self_filter_->getLinkNames(frames_);
 
-      // Subscribe to input cloud with sensor data QoS (BEST_EFFORT)
       rclcpp::QoS input_qos = rclcpp::SensorDataQoS();
       sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
           in_topic_,
@@ -293,8 +332,8 @@ namespace robot_self_filter
     std::shared_ptr<filters::SelfFilterInterface> self_filter_;
 
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_;
-    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pointCloudPublisher_;
-    rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
+    rclcpp_lifecycle::LifecyclePublisher<sensor_msgs::msg::PointCloud2>::SharedPtr pointCloudPublisher_;
+    rclcpp_lifecycle::LifecyclePublisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
 
     std::string sensor_frame_;
     bool use_rgb_;
@@ -309,9 +348,10 @@ namespace robot_self_filter
 int main(int argc, char **argv)
 {
   rclcpp::init(argc, argv);
+  rclcpp::executors::SingleThreadedExecutor executor;
   auto node = std::make_shared<robot_self_filter::SelfFilterNode>();
-  node->initSelfFilter();
-  rclcpp::spin(node);
+  executor.add_node(node->get_node_base_interface());
+  executor.spin();
   rclcpp::shutdown();
   return 0;
 }
