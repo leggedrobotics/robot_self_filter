@@ -22,6 +22,7 @@ find_package(yaml-cpp REQUIRED)
 
 # ROS 2 packages
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_lifecycle REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(geometry_msgs REQUIRED)
@@ -170,6 +171,7 @@ ament_target_dependencies(${PROJECT_NAME}
 
 ament_target_dependencies(self_filter
   rclcpp
+  rclcpp_lifecycle
   tf2
   tf2_ros
   geometry_msgs
