@@ -5,6 +5,7 @@
 
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
+#include <std_msgs/msg/string.hpp>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/create_timer_ros.h>
 #include <tf2_ros/transform_listener.h>
@@ -31,6 +32,7 @@ namespace robot_self_filter
     HesaiSensor = 3,
     RobosenseSensor = 4,
     PandarSensor = 5,
+    XYZISensor = 6,
   };
 
   class SelfFilterNode : public rclcpp::Node
@@ -54,7 +56,9 @@ namespace robot_self_filter
       this->declare_parameter<int>("max_queue_size", 10);
       this->declare_parameter<int>("lidar_sensor_type", 0);
       this->declare_parameter<std::string>("robot_description", "");
-      this->declare_parameter<std::string>("in_pointcloud_topic", "/cloud_in");
+      this->declare_parameter<std::string>("robot_description_topic", "/robot_description");
+      this->declare_parameter<std::string>("in_pointcloud_topic", "cloud_in");
+      this->declare_parameter<std::string>("out_pointcloud_topic", "cloud_out");
 
       sensor_frame_ = this->get_parameter("sensor_frame").as_string();
       use_rgb_ = this->get_parameter("use_rgb").as_bool();
@@ -62,6 +66,7 @@ namespace robot_self_filter
       int temp_sensor_type = this->get_parameter("lidar_sensor_type").as_int();
       sensor_type_ = static_cast<SensorType>(temp_sensor_type);
       in_topic_ = this->get_parameter("in_pointcloud_topic").as_string();
+      out_topic_ = this->get_parameter("out_pointcloud_topic").as_string();
 
       RCLCPP_INFO(this->get_logger(), "Parameters:");
       RCLCPP_INFO(this->get_logger(), "  sensor_frame: %s", sensor_frame_.c_str());
@@ -69,6 +74,7 @@ namespace robot_self_filter
       RCLCPP_INFO(this->get_logger(), "  max_queue_size: %d", max_queue_size_);
       RCLCPP_INFO(this->get_logger(), "  lidar_sensor_type: %d", temp_sensor_type);
       RCLCPP_INFO(this->get_logger(), "  in_pointcloud_topic: %s", in_topic_.c_str());
+      RCLCPP_INFO(this->get_logger(), "  out_pointcloud_topic: %s", out_topic_.c_str());
 
       tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
       tf_buffer_->setCreateTimerInterface(
@@ -80,7 +86,7 @@ namespace robot_self_filter
       // Publish filtered cloud as sensor data QoS (BEST_EFFORT) for high-rate streams
       pointCloudPublisher_ =
           this->create_publisher<sensor_msgs::msg::PointCloud2>(
-              "cloud_out", rclcpp::SensorDataQoS());
+              out_topic_, rclcpp::SensorDataQoS());
 
       marker_pub_ =
           this->create_publisher<visualization_msgs::msg::MarkerArray>("collision_shapes", 1);
@@ -90,6 +96,46 @@ namespace robot_self_filter
     {
       std::string robot_description_xml = this->get_parameter("robot_description").as_string();
 
+      if (!robot_description_xml.empty())
+      {
+        RCLCPP_INFO(this->get_logger(), "Using robot description from parameter");
+        setupFilter();
+        return;
+      }
+
+      std::string topic = this->get_parameter("robot_description_topic").as_string();
+      if (!topic.empty() && topic != "")
+      {
+        RCLCPP_INFO(this->get_logger(), "Subscribing to robot description topic: %s", topic.c_str());
+
+        robot_desc_sub_ = this->create_subscription<std_msgs::msg::String>(
+            topic,
+            rclcpp::QoS(1).transient_local(),
+            std::bind(&SelfFilterNode::robotDescriptionCallback, this, std::placeholders::_1));
+
+        return;
+      }
+    
+      RCLCPP_ERROR(this->get_logger(), "No robot description provided via parameter or topic");
+    }
+
+  private:
+    void robotDescriptionCallback(const std_msgs::msg::String::SharedPtr msg)
+    {
+      if (msg->data.empty())
+      {
+        RCLCPP_WARN(this->get_logger(), "Received empty robot description from topic, ignoring");
+        return;
+      }
+      RCLCPP_INFO(this->get_logger(), "Received robot description from topic");
+      this->set_parameter(rclcpp::Parameter("robot_description", msg->data));
+      robot_desc_sub_.reset();
+      RCLCPP_INFO(this->get_logger(), "Robot description subscription no longer needed, unsubscribed");
+      setupFilter();
+    }
+
+    void setupFilter()
+    {
       switch (sensor_type_)
       {
       case SensorType::XYZSensor:
@@ -110,12 +156,18 @@ namespace robot_self_filter
       case SensorType::PandarSensor:
         self_filter_ = std::make_shared<filters::SelfFilter<PointPandar>>(this->shared_from_this());
         break;
+      case SensorType::XYZISensor:
+        self_filter_ = std::make_shared<filters::SelfFilter<pcl::PointXYZI>>(this->shared_from_this());
+        break;
       default:
         self_filter_ = std::make_shared<filters::SelfFilter<pcl::PointXYZ>>(this->shared_from_this());
         break;
       }
 
       self_filter_->getLinkNames(frames_);
+
+      RCLCPP_INFO(this->get_logger(), "Initialized SelfFilter with %zu collision shapes", frames_.size());
+      RCLCPP_INFO(this->get_logger(), "Subscribing to point cloud topic: %s", in_topic_.c_str());
 
       // Subscribe to input cloud with sensor data QoS (BEST_EFFORT)
       rclcpp::QoS input_qos = rclcpp::SensorDataQoS();
@@ -125,7 +177,6 @@ namespace robot_self_filter
           std::bind(&SelfFilterNode::cloudCallback, this, std::placeholders::_1));
     }
 
-  private:
     void cloudCallback(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &cloud)
     {
       RCLCPP_INFO(this->get_logger(), "Received cloud message with timestamp %.6f",
@@ -158,6 +209,15 @@ namespace robot_self_filter
         if (!sf_ouster)
           return;
         auto mask = sf_ouster->getSelfMaskPtr();
+        publishShapesFromMask(mask, cloud->header.frame_id);
+        break;
+      }
+      case SensorType::XYZISensor:
+      {
+        auto sf_xyzi = std::dynamic_pointer_cast<filters::SelfFilter<pcl::PointXYZI>>(self_filter_);
+        if (!sf_xyzi)
+          return;
+        auto mask = sf_xyzi->getSelfMaskPtr();
         publishShapesFromMask(mask, cloud->header.frame_id);
         break;
       }
@@ -293,6 +353,7 @@ namespace robot_self_filter
     std::shared_ptr<filters::SelfFilterInterface> self_filter_;
 
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_;
+    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr robot_desc_sub_;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pointCloudPublisher_;
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
 
@@ -302,6 +363,7 @@ namespace robot_self_filter
     int max_queue_size_;
     std::vector<std::string> frames_;
     std::string in_topic_;
+    std::string out_topic_;
   };
 
 } // namespace robot_self_filter

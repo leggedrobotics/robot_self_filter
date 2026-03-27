@@ -44,7 +44,20 @@ source install/setup.bash
 
 ### Quick Start
 
-Launch the self filter node with your robot configuration:
+Launch the self filter node with your robot configuration. The robot description can be provided either as a parameter or via a ROS 2 topic (e.g. published by `robot_state_publisher`).
+
+**Option 1: From topic (recommended)**
+
+If `robot_state_publisher` is running, the filter will automatically pick up the robot description from the `/robot_description` topic:
+
+```bash
+ros2 launch robot_self_filter self_filter.launch.py \
+    filter_config:=/path/to/filter_config.yaml \
+    in_pointcloud_topic:=/lidar/points \
+    out_pointcloud_topic:=/lidar/points_filtered
+```
+
+**Option 2: From parameter**
 
 ```bash
 ros2 launch robot_self_filter self_filter.launch.py \
@@ -54,18 +67,21 @@ ros2 launch robot_self_filter self_filter.launch.py \
     out_pointcloud_topic:=/lidar/points_filtered
 ```
 
+When `robot_description` is provided as a non-empty parameter, it takes priority over the topic.
+
 ### Launch Parameters
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `robot_description` | string | - | Robot URDF/XACRO description |
+| `robot_description` | string | - | Robot URDF/XACRO description (if empty, uses topic instead) |
+| `robot_description_topic` | string | `/robot_description` | Topic to subscribe to for robot description |
 | `filter_config` | string | - | Path to YAML configuration file |
 | `in_pointcloud_topic` | string | `/cloud_in` | Input point cloud topic |
 | `out_pointcloud_topic` | string | `/cloud_out` | Filtered point cloud topic |
-| `lidar_sensor_type` | int | `2` | Sensor type (0: XYZ, 1: XYZRGB, 2: Ouster, 3: Hesai, 4: Robosense, 5: Pandar) |
+| `lidar_sensor_type` | int | `2` | Sensor type (0: XYZ, 1: XYZRGB, 2: Ouster, 3: Hesai, 4: Robosense, 5: Pandar, 6: XYZI) |
 | `zero_for_removed_points` | bool | `true` | Set filtered points to zero instead of removing |
+| `sensor_frame` | string | `Lidar` | TF frame of the sensor |
 | `use_sim_time` | bool | `true` | Use simulation time |
-| `description_name` | string | `/robot_description` | Robot description parameter namespace |
 
 ## Configuration
 
@@ -131,6 +147,7 @@ The filter automatically determines shape types from the robot's URDF collision 
 ### Subscribed Topics
 
 - `<in_pointcloud_topic>` (sensor_msgs/PointCloud2): Raw point cloud from sensor
+- `<robot_description_topic>` (std_msgs/String): Robot URDF description (only when `robot_description` parameter is empty)
 - `/tf` (tf2_msgs/TFMessage): Transform data
 - `/tf_static` (tf2_msgs/TFMessage): Static transforms
 - `/joint_states` (sensor_msgs/JointState): Robot joint positions
@@ -160,6 +177,7 @@ The package supports multiple sensor types through the `lidar_sensor_type` param
 | 3 | Hesai | Custom Hesai point type |
 | 4 | Robosense | Custom Robosense point type |
 | 5 | Pandar | Custom Pandar point type |
+| 6 | Generic XYZI | `pcl::PointXYZI` |
 
 ## Examples
 
