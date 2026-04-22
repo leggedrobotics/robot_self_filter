@@ -3,6 +3,7 @@
 #define ROBOT_SELF_FILTER_SELF_MASK_
 
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp/node_interfaces/node_parameters_interface.hpp>
 #include <tf2/LinearMath/Transform.h>
 #include <tf2/LinearMath/Vector3.h>
 #include <tf2_ros/buffer.h>
@@ -140,10 +141,13 @@ protected:
 public:
   using PointCloud = pcl::PointCloud<PointT>;
 
-  SelfMask(rclcpp::Node::SharedPtr node,
+  template <class NodeT>
+  SelfMask(std::shared_ptr<NodeT> node,
            tf2_ros::Buffer &tf_buffer,
            const std::vector<LinkInfo> &links)
-    : node_(node)
+    : node_clock_(node->get_clock())
+    , node_params_(node->get_node_parameters_interface())
+    , node_logger_(node->get_logger())
     , tf_buffer_(tf_buffer)
   {
     configure(links);
@@ -216,14 +220,13 @@ public:
 
   void assumeFrame(const std_msgs::msg::Header &header)
   {
-    rclcpp::Time transform_time(header.stamp.sec, header.stamp.nanosec, node_->get_clock()->get_clock_type());
     for (auto &sl : bodies_)
     {
       try
       {
         auto transform_stamped = tf_buffer_.lookupTransform(
           header.frame_id, sl.name,
-          transform_time, rclcpp::Duration(std::chrono::milliseconds(100)));
+          tf2::TimePointZero);
         tf2::Quaternion q(
             transform_stamped.transform.rotation.x,
             transform_stamped.transform.rotation.y,
@@ -260,7 +263,6 @@ public:
                    const double min_sensor_dist)
   {
     assumeFrame(header);
-    rclcpp::Time transform_time(header.stamp.sec, header.stamp.nanosec, node_->get_clock()->get_clock_type());
 
     if (!sensor_frame.empty())
     {
@@ -268,7 +270,7 @@ public:
       {
         auto transform_stamped = tf_buffer_.lookupTransform(
           header.frame_id, sensor_frame,
-          transform_time, rclcpp::Duration(std::chrono::milliseconds(100)));
+          tf2::TimePointZero);
         tf2::Vector3 t(
             transform_stamped.transform.translation.x,
             transform_stamped.transform.translation.y,
@@ -359,15 +361,17 @@ protected:
     sensor_pos_ = tf2::Vector3(0, 0, 0);
 
     std::string content;
-    if (!node_->get_parameter("robot_description", content) || content.empty())
+    rclcpp::Parameter rd_param;
+    if (!node_params_->get_parameter("robot_description", rd_param) ||
+        (content = rd_param.as_string()).empty())
     {
-      RCLCPP_ERROR(node_->get_logger(), "Robot model not found!");
+      RCLCPP_ERROR(node_logger_, "Robot model not found!");
       return false;
     }
     auto urdfModel = std::make_shared<urdf::Model>();
     if (!urdfModel->initString(content))
     {
-      RCLCPP_ERROR(node_->get_logger(), "Unable to parse URDF!");
+      RCLCPP_ERROR(node_logger_, "Unable to parse URDF!");
       return false;
     }
 
@@ -588,7 +592,9 @@ protected:
     }
   }
 
-  rclcpp::Node::SharedPtr node_;
+  rclcpp::Clock::SharedPtr node_clock_;
+  rclcpp::node_interfaces::NodeParametersInterface::SharedPtr node_params_;
+  rclcpp::Logger node_logger_;
   tf2_ros::Buffer        &tf_buffer_;
 
   tf2::Vector3             sensor_pos_{0, 0, 0};
