@@ -39,46 +39,51 @@ class SelfFilter : public FilterBase<pcl::PointCloud<PointT>>, public SelfFilter
 public:
   using PointCloud = pcl::PointCloud<PointT>;
 
-  explicit SelfFilter(const rclcpp::Node::SharedPtr &node)
-    : node_(node)
-    , tf_buffer_(std::make_shared<tf2_ros::Buffer>(node_->get_clock()))
-    , tf_listener_(std::make_shared<tf2_ros::TransformListener>(*tf_buffer_))
+  template <class NodeT>
+  explicit SelfFilter(const std::shared_ptr<NodeT> &node,
+                      std::shared_ptr<tf2_ros::Buffer> existing_tf_buffer = nullptr)
+    : tf_buffer_(existing_tf_buffer
+                 ? existing_tf_buffer
+                 : std::make_shared<tf2_ros::Buffer>(node->get_clock()))
+    , tf_listener_(existing_tf_buffer
+                   ? nullptr
+                   : std::make_shared<tf2_ros::TransformListener>(*tf_buffer_))
   {
-    node_->declare_parameter<double>("min_sensor_dist", 0.01, rcl_interfaces::msg::ParameterDescriptor());
-    node_->declare_parameter<bool>("keep_organized", false, rcl_interfaces::msg::ParameterDescriptor());
-    node_->declare_parameter<bool>("zero_for_removed_points", false, rcl_interfaces::msg::ParameterDescriptor());
-    node_->declare_parameter<bool>("invert", false, rcl_interfaces::msg::ParameterDescriptor());
+    node->template declare_parameter<double>("min_sensor_dist", 0.01, rcl_interfaces::msg::ParameterDescriptor());
+    node->template declare_parameter<bool>("keep_organized", false, rcl_interfaces::msg::ParameterDescriptor());
+    node->template declare_parameter<bool>("zero_for_removed_points", false, rcl_interfaces::msg::ParameterDescriptor());
+    node->template declare_parameter<bool>("invert", false, rcl_interfaces::msg::ParameterDescriptor());
 
-    node_->declare_parameter<std::vector<double>>("default_box_scale",
+    node->template declare_parameter<std::vector<double>>("default_box_scale",
       {1.0, 1.0, 1.0}, rcl_interfaces::msg::ParameterDescriptor());
-    node_->declare_parameter<std::vector<double>>("default_box_padding",
+    node->template declare_parameter<std::vector<double>>("default_box_padding",
       {0.01, 0.01, 0.01}, rcl_interfaces::msg::ParameterDescriptor());
-    node_->declare_parameter<std::vector<double>>("default_cylinder_scale",
+    node->template declare_parameter<std::vector<double>>("default_cylinder_scale",
       {1.0, 1.0}, rcl_interfaces::msg::ParameterDescriptor());
-    node_->declare_parameter<std::vector<double>>("default_cylinder_padding",
+    node->template declare_parameter<std::vector<double>>("default_cylinder_padding",
       {0.01, 0.01}, rcl_interfaces::msg::ParameterDescriptor());
-    node_->declare_parameter<double>("default_sphere_scale", 1.0, rcl_interfaces::msg::ParameterDescriptor());
-    node_->declare_parameter<double>("default_sphere_padding", 0.01, rcl_interfaces::msg::ParameterDescriptor());
+    node->template declare_parameter<double>("default_sphere_scale", 1.0, rcl_interfaces::msg::ParameterDescriptor());
+    node->template declare_parameter<double>("default_sphere_padding", 0.01, rcl_interfaces::msg::ParameterDescriptor());
 
-    node_->get_parameter("min_sensor_dist", min_sensor_dist_);
-    node_->get_parameter("keep_organized", keep_organized_);
-    node_->get_parameter("zero_for_removed_points", zero_for_removed_points_);
-    node_->get_parameter("invert", invert_);
+    node->get_parameter("min_sensor_dist", min_sensor_dist_);
+    node->get_parameter("keep_organized", keep_organized_);
+    node->get_parameter("zero_for_removed_points", zero_for_removed_points_);
+    node->get_parameter("invert", invert_);
 
-    node_->get_parameter("default_box_scale", default_box_scale_);
-    node_->get_parameter("default_box_padding", default_box_pad_);
-    node_->get_parameter("default_cylinder_scale", default_cyl_scale_);
-    node_->get_parameter("default_cylinder_padding", default_cyl_pad_);
-    node_->get_parameter("default_sphere_scale", default_sphere_scale_);
-    node_->get_parameter("default_sphere_padding", default_sphere_pad_);
+    node->get_parameter("default_box_scale", default_box_scale_);
+    node->get_parameter("default_box_padding", default_box_pad_);
+    node->get_parameter("default_cylinder_scale", default_cyl_scale_);
+    node->get_parameter("default_cylinder_padding", default_cyl_pad_);
+    node->get_parameter("default_sphere_scale", default_sphere_scale_);
+    node->get_parameter("default_sphere_padding", default_sphere_pad_);
 
-    node_->declare_parameter<std::vector<std::string>>(
+    node->template declare_parameter<std::vector<std::string>>(
       "self_see_links.names",
       std::vector<std::string>(),
       rcl_interfaces::msg::ParameterDescriptor()
     );
     std::vector<std::string> link_names;
-    node_->get_parameter("self_see_links.names", link_names);
+    node->get_parameter("self_see_links.names", link_names);
 
     std::vector<robot_self_filter::LinkInfo> links;
     for (auto &lname : link_names)
@@ -95,33 +100,33 @@ public:
       std::string padding_key     = "self_see_links." + lname + ".padding";
       std::string scale_key       = "self_see_links." + lname + ".scale";
 
-      node_->declare_parameter<std::vector<double>>(box_scale_key,
+      node->template declare_parameter<std::vector<double>>(box_scale_key,
         std::vector<double>(), rcl_interfaces::msg::ParameterDescriptor());
-      node_->declare_parameter<std::vector<double>>(box_padding_key,
+      node->template declare_parameter<std::vector<double>>(box_padding_key,
         std::vector<double>(), rcl_interfaces::msg::ParameterDescriptor());
-      node_->get_parameter(box_scale_key, li.box_scale);
-      node_->get_parameter(box_padding_key, li.box_padding);
+      node->get_parameter(box_scale_key, li.box_scale);
+      node->get_parameter(box_padding_key, li.box_padding);
 
-      node_->declare_parameter<std::vector<double>>(cyl_scale_key,
+      node->template declare_parameter<std::vector<double>>(cyl_scale_key,
         std::vector<double>(), rcl_interfaces::msg::ParameterDescriptor());
-      node_->declare_parameter<std::vector<double>>(cyl_padding_key,
+      node->template declare_parameter<std::vector<double>>(cyl_padding_key,
         std::vector<double>(), rcl_interfaces::msg::ParameterDescriptor());
-      node_->get_parameter(cyl_scale_key, li.cylinder_scale);
-      node_->get_parameter(cyl_padding_key, li.cylinder_padding);
+      node->get_parameter(cyl_scale_key, li.cylinder_scale);
+      node->get_parameter(cyl_padding_key, li.cylinder_padding);
 
-      node_->declare_parameter<double>(padding_key, default_sphere_pad_, rcl_interfaces::msg::ParameterDescriptor());
-      node_->declare_parameter<double>(scale_key, default_sphere_scale_, rcl_interfaces::msg::ParameterDescriptor());
+      node->template declare_parameter<double>(padding_key, default_sphere_pad_, rcl_interfaces::msg::ParameterDescriptor());
+      node->template declare_parameter<double>(scale_key, default_sphere_scale_, rcl_interfaces::msg::ParameterDescriptor());
       double link_pad = default_sphere_pad_;
       double link_scl = default_sphere_scale_;
-      node_->get_parameter(padding_key, link_pad);
-      node_->get_parameter(scale_key, link_scl);
+      node->get_parameter(padding_key, link_pad);
+      node->get_parameter(scale_key, link_scl);
       li.padding = link_pad;
       li.scale   = link_scl;
 
       links.push_back(li);
     }
 
-    sm_ = std::make_shared<robot_self_filter::SelfMask<PointT>>(node_, *tf_buffer_, links);
+    sm_ = std::make_shared<robot_self_filter::SelfMask<PointT>>(node, *tf_buffer_, links);
   }
 
   ~SelfFilter() override = default;
@@ -223,7 +228,6 @@ protected:
     }
   }
 
-  rclcpp::Node::SharedPtr node_;
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
   std::shared_ptr<robot_self_filter::SelfMask<PointT>> sm_;

@@ -1,5 +1,4 @@
-cmake_minimum_required(VERSION 3.8)
-cmake_policy(VERSION 3.28)
+cmake_minimum_required(VERSION 3.22)
 
 project(robot_self_filter)
 
@@ -22,6 +21,7 @@ find_package(yaml-cpp REQUIRED)
 
 # ROS 2 packages
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_lifecycle REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(geometry_msgs REQUIRED)
@@ -170,6 +170,7 @@ ament_target_dependencies(${PROJECT_NAME}
 
 ament_target_dependencies(self_filter
   rclcpp
+  rclcpp_lifecycle
   tf2
   tf2_ros
   geometry_msgs
@@ -201,10 +202,9 @@ install(
   TARGETS
     robot_geometric_shapes
     ${PROJECT_NAME}
+#    test_filter
     self_filter
-  ARCHIVE DESTINATION lib
-  LIBRARY DESTINATION lib
-  RUNTIME DESTINATION lib/${PROJECT_NAME}
+  DESTINATION lib/${PROJECT_NAME}
 )
 
 #
@@ -217,8 +217,6 @@ ament_export_include_directories(
 ament_export_libraries(
   robot_geometric_shapes
   ${PROJECT_NAME}
-  ${BULLET_LIBRARIES}
-  ${ASSIMP_LIBRARIES}
 )
 
 # Exporting Bullet as a standard ament dependency doesn't typically do anything,
