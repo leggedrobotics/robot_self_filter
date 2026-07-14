@@ -187,7 +187,7 @@ namespace robot_self_filter
       {
         const auto &see_link = bodies[i];
         const bodies::Body *body = see_link.body;
-        if (!body)
+        if (!body || !see_link.hasTransform)
           continue;
 
         visualization_msgs::msg::Marker mk;

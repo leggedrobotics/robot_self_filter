@@ -120,11 +120,12 @@ class SelfMask
 protected:
   struct SeeLink
   {
-    SeeLink() : body(nullptr), unscaledBody(nullptr), volume(0.0) {}
+    SeeLink() : body(nullptr), unscaledBody(nullptr), hasTransform(false), volume(0.0) {}
     std::string      name;
     bodies::Body    *body;
     bodies::Body    *unscaledBody;
     tf2::Transform   constTransf;
+    bool             hasTransform;
     double           volume;
   };
 
@@ -237,6 +238,7 @@ public:
         tf2::Transform tf2_transform(q, t);
         sl.body->setPose(tf2_transform * sl.constTransf);
         sl.unscaledBody->setPose(tf2_transform * sl.constTransf);
+        sl.hasTransform = true;
       }
       catch(...)
       {
@@ -291,6 +293,8 @@ public:
   {
     for (auto &sl : bodies_)
     {
+      if (!sl.hasTransform)
+        continue;
       if (sl.body->containsPoint(pt))
         return INSIDE;
     }
@@ -301,8 +305,12 @@ public:
                           const std::function<void(const tf2::Vector3&)> &intersectionCallback = nullptr) const
   {
     for (auto &sl : bodies_)
+    {
+      if (!sl.hasTransform)
+        continue;
       if (sl.unscaledBody->containsPoint(pt))
         return INSIDE;
+    }
 
     tf2::Vector3 dir = sensor_pos_ - pt;
     double lng = dir.length();
@@ -311,6 +319,8 @@ public:
     dir /= lng;
     for (auto &sl : bodies_)
     {
+      if (!sl.hasTransform)
+        continue;
       std::vector<tf2::Vector3> hits;
       if (sl.body->intersectsRay(pt, dir, &hits, 1))
       {
@@ -325,6 +335,8 @@ public:
 
     for (auto &sl : bodies_)
     {
+      if (!sl.hasTransform)
+        continue;
       if (sl.body->containsPoint(pt))
         return INSIDE;
     }
@@ -477,22 +489,35 @@ protected:
     // Sort descending by volume
     std::sort(bodies_.begin(), bodies_.end(), SortBodies());
 
-    bspheres_.resize(bodies_.size());
-    bspheresRadius2_.resize(bodies_.size());
+    bspheres_.reserve(bodies_.size());
+    bspheresRadius2_.reserve(bodies_.size());
     return true;
   }
 
   void computeBoundingSpheres()
   {
-    for (size_t i = 0; i < bodies_.size(); ++i)
+    bspheres_.clear();
+    bspheresRadius2_.clear();
+    for (auto &sl : bodies_)
     {
-      bodies_[i].body->computeBoundingSphere(bspheres_[i]);
-      bspheresRadius2_[i] = bspheres_[i].radius * bspheres_[i].radius;
+      if (!sl.hasTransform)
+        continue;
+
+      bodies::BoundingSphere sphere;
+      sl.body->computeBoundingSphere(sphere);
+      bspheres_.push_back(sphere);
+      bspheresRadius2_.push_back(sphere.radius * sphere.radius);
     }
   }
 
   void maskAuxContainment(const PointCloud &data_in, std::vector<int> &mask)
   {
+    if (bspheres_.empty())
+    {
+      std::fill(mask.begin(), mask.end(), (int)OUTSIDE);
+      return;
+    }
+
     // Merge bounding spheres for a quick cull
     bodies::BoundingSphere bound;
     bodies::mergeBoundingSpheres(bspheres_, bound);
@@ -507,6 +532,8 @@ protected:
       {
         for (auto &sl : bodies_)
         {
+          if (!sl.hasTransform)
+            continue;
           if (sl.body->containsPoint(pt))
           {
             out = INSIDE;
@@ -522,6 +549,16 @@ protected:
                            std::vector<int> &mask,
                            const std::function<void(const tf2::Vector3&)> &callback)
   {
+    if (bspheres_.empty())
+    {
+      for (size_t i = 0; i < data_in.points.size(); ++i)
+      {
+        const tf2::Vector3 pt(data_in.points[i].x, data_in.points[i].y, data_in.points[i].z);
+        mask[i] = (sensor_pos_ - pt).length() < min_sensor_dist_ ? INSIDE : OUTSIDE;
+      }
+      return;
+    }
+
     bodies::BoundingSphere bound;
     bodies::mergeBoundingSpheres(bspheres_, bound);
     double radiusSq = bound.radius * bound.radius;
@@ -537,6 +574,8 @@ protected:
       {
         for (auto &sl : bodies_)
         {
+          if (!sl.hasTransform)
+            continue;
           if (sl.unscaledBody->containsPoint(pt))
           {
             out = INSIDE;
@@ -559,6 +598,8 @@ protected:
           // Ray intersect
           for (auto &sl : bodies_)
           {
+            if (!sl.hasTransform)
+              continue;
             std::vector<tf2::Vector3> hits;
             if (sl.body->intersectsRay(pt, dir, &hits, 1))
             {
@@ -575,6 +616,8 @@ protected:
           {
             for (auto &sl : bodies_)
             {
+              if (!sl.hasTransform)
+                continue;
               if (sl.body->containsPoint(pt))
               {
                 out = INSIDE;
