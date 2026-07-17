@@ -193,7 +193,7 @@ namespace robot_self_filter
         visualization_msgs::msg::Marker mk;
         mk.header.frame_id = shapes_frame;
         mk.header.stamp = this->get_clock()->now();
-        mk.ns = "self_filter_shapes";
+        mk.ns = "self_filter_shapes/" + see_link.name;
         mk.id = static_cast<int>(i);
         mk.action = visualization_msgs::msg::Marker::ADD;
         mk.lifetime = rclcpp::Duration(0, 0);

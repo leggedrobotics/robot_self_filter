@@ -39,10 +39,15 @@ struct LinkInfo
   // Fallback single scale/padding
   double scale   = 1.0;
   double padding = 0.01;
+  // Optional filter-only sphere pose [x, y, z, roll, pitch, yaw].
+  std::vector<double> sphere_pose_override;
 
   // For boxes
   std::vector<double> box_scale;    // [sx, sy, sz]
   std::vector<double> box_padding;  // [px, py, pz]
+  // Optional filter-only collision pose [x, y, z, roll, pitch, yaw].
+  // This overrides the URDF collision origin without changing robot_description.
+  std::vector<double> box_pose_override;
 
   // For cylinders
   std::vector<double> cylinder_scale;   // [rad_scale, vert_scale]
@@ -412,6 +417,28 @@ protected:
             case shapes::SPHERE:
             {
               auto sph = dynamic_cast<bodies::Sphere*>(sl.body);
+              if (linfo.sphere_pose_override.size() == 6)
+              {
+                tf2::Quaternion rotation;
+                rotation.setRPY(
+                  linfo.sphere_pose_override[3],
+                  linfo.sphere_pose_override[4],
+                  linfo.sphere_pose_override[5]);
+                sl.constTransf = tf2::Transform(
+                  rotation,
+                  tf2::Vector3(
+                    linfo.sphere_pose_override[0],
+                    linfo.sphere_pose_override[1],
+                    linfo.sphere_pose_override[2]));
+              }
+              else if (!linfo.sphere_pose_override.empty())
+              {
+                RCLCPP_WARN(
+                  node_->get_logger(),
+                  "Ignoring sphere_pose_override for link '%s': expected 6 values, got %zu",
+                  linfo.name.c_str(),
+                  linfo.sphere_pose_override.size());
+              }
               // single scale/padding only
               sph->setScale(linfo.scale);
               sph->setPadding(linfo.padding);
@@ -420,6 +447,28 @@ protected:
             case shapes::BOX:
             {
               auto bx = dynamic_cast<bodies::Box*>(sl.body);
+              if (linfo.box_pose_override.size() == 6)
+              {
+                tf2::Quaternion rotation;
+                rotation.setRPY(
+                  linfo.box_pose_override[3],
+                  linfo.box_pose_override[4],
+                  linfo.box_pose_override[5]);
+                sl.constTransf = tf2::Transform(
+                  rotation,
+                  tf2::Vector3(
+                    linfo.box_pose_override[0],
+                    linfo.box_pose_override[1],
+                    linfo.box_pose_override[2]));
+              }
+              else if (!linfo.box_pose_override.empty())
+              {
+                RCLCPP_WARN(
+                  node_->get_logger(),
+                  "Ignoring box_pose_override for link '%s': expected 6 values, got %zu",
+                  linfo.name.c_str(),
+                  linfo.box_pose_override.size());
+              }
               if (linfo.box_scale.size() == 3 && linfo.box_padding.size() == 3)
               {
                 bx->setScale(linfo.box_scale[0],

@@ -90,10 +90,12 @@ public:
 
       std::string box_scale_key   = "self_see_links." + lname + ".box_scale";
       std::string box_padding_key = "self_see_links." + lname + ".box_padding";
+      std::string box_pose_key    = "self_see_links." + lname + ".box_pose_override";
       std::string cyl_scale_key   = "self_see_links." + lname + ".cylinder_scale";
       std::string cyl_padding_key = "self_see_links." + lname + ".cylinder_padding";
       std::string padding_key     = "self_see_links." + lname + ".padding";
       std::string scale_key       = "self_see_links." + lname + ".scale";
+      std::string sphere_pose_key = "self_see_links." + lname + ".sphere_pose_override";
 
       node_->declare_parameter<std::vector<double>>(box_scale_key,
         std::vector<double>(), rcl_interfaces::msg::ParameterDescriptor());
@@ -101,6 +103,9 @@ public:
         std::vector<double>(), rcl_interfaces::msg::ParameterDescriptor());
       node_->get_parameter(box_scale_key, li.box_scale);
       node_->get_parameter(box_padding_key, li.box_padding);
+      node_->declare_parameter<std::vector<double>>(box_pose_key,
+        std::vector<double>(), rcl_interfaces::msg::ParameterDescriptor());
+      node_->get_parameter(box_pose_key, li.box_pose_override);
 
       node_->declare_parameter<std::vector<double>>(cyl_scale_key,
         std::vector<double>(), rcl_interfaces::msg::ParameterDescriptor());
@@ -108,6 +113,9 @@ public:
         std::vector<double>(), rcl_interfaces::msg::ParameterDescriptor());
       node_->get_parameter(cyl_scale_key, li.cylinder_scale);
       node_->get_parameter(cyl_padding_key, li.cylinder_padding);
+      node_->declare_parameter<std::vector<double>>(sphere_pose_key,
+        std::vector<double>(), rcl_interfaces::msg::ParameterDescriptor());
+      node_->get_parameter(sphere_pose_key, li.sphere_pose_override);
 
       node_->declare_parameter<double>(padding_key, default_sphere_pad_, rcl_interfaces::msg::ParameterDescriptor());
       node_->declare_parameter<double>(scale_key, default_sphere_scale_, rcl_interfaces::msg::ParameterDescriptor());
