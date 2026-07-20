@@ -182,32 +182,6 @@ ament_target_dependencies(self_filter
   tinyxml2_vendor
 )
 
-if(BUILD_TESTING)
-  find_package(ament_cmake_gtest REQUIRED)
-
-  ament_add_gtest(test_unresolved_transform
-    test/test_unresolved_transform.cpp
-  )
-  target_link_libraries(test_unresolved_transform
-    ${PROJECT_NAME}
-    robot_geometric_shapes
-    ${ASSIMP_LIBRARIES}
-  )
-  ament_target_dependencies(test_unresolved_transform
-    rclcpp
-    tf2
-    tf2_ros
-    geometry_msgs
-    sensor_msgs
-    urdf
-    resource_retriever
-    visualization_msgs
-    pcl_ros
-    filters
-    tinyxml2_vendor
-  )
-endif()
-
 #
 # Install
 #

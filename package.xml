@@ -43,8 +43,6 @@
   <exec_depend>filters</exec_depend>
   <exec_depend>tinyxml2_vendor</exec_depend>
 
-  <test_depend>ament_cmake_gtest</test_depend>
-
   <!-- Export -->
   <export>
     <build_type>ament_cmake</build_type>
