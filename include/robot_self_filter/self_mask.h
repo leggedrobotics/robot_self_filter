@@ -14,11 +14,10 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <urdf/model.h>
 #include <resource_retriever/retriever.hpp>
-#include <boost/filesystem.hpp>
-#include <boost/function.hpp>
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <limits>
 #include <robot_self_filter/bodies.h>
 
 namespace robot_self_filter
@@ -98,12 +97,17 @@ static shapes::Shape* constructShape(const urdf::Geometry *geom)
         }
         if (res.size > 0)
         {
-          boost::filesystem::path model_path(mesh->filename);
-          std::string ext = model_path.extension().string();
+          const std::string::size_type dot = mesh->filename.find_last_of('.');
+          const std::string ext = dot == std::string::npos ? std::string() :
+            mesh->filename.substr(dot);
           if (ext == ".dae" || ext == ".DAE")
             result = shapes::createMeshFromBinaryDAE(mesh->filename.c_str());
+          else if (res.size <= std::numeric_limits<unsigned int>::max())
+            result = shapes::createMeshFromBinaryStlData(
+              reinterpret_cast<char*>(res.data.get()), static_cast<unsigned int>(res.size));
           else
-            result = shapes::createMeshFromBinaryStlData(reinterpret_cast<char*>(res.data.get()), res.size);
+            RCLCPP_ERROR(rclcpp::get_logger("robot_self_filter"),
+              "Mesh resource is too large for the STL loader: %zu bytes", res.size);
         }
       }
       break;
@@ -373,9 +377,30 @@ protected:
 
     for (auto &linfo : links)
     {
-      const urdf::Link *link = urdfModel->getLink(linfo.name).get();
-      if (!link || !(link->collision && link->collision->geometry))
+      auto urdf_link = urdfModel->getLink(linfo.name);
+      std::string urdf_link_name = linfo.name;
+      std::string::size_type separator = urdf_link_name.find('/');
+      while (!urdf_link && separator != std::string::npos)
+      {
+        urdf_link_name.erase(0, separator + 1U);
+        urdf_link = urdfModel->getLink(urdf_link_name);
+        separator = urdf_link_name.find('/');
+      }
+      if (!urdf_link)
+      {
+        RCLCPP_WARN(node_->get_logger(),
+          "Self-filter link '%s' was not found in robot_description",
+          linfo.name.c_str());
         continue;
+      }
+
+      const urdf::Link *link = urdf_link.get();
+      if (!(link->collision && link->collision->geometry))
+      {
+        RCLCPP_WARN(node_->get_logger(),
+          "Self-filter link '%s' has no collision geometry", urdf_link_name.c_str());
+        continue;
+      }
 
       // Collect collision geometry
       std::vector<urdf::CollisionSharedPtr> collisions = link->collision_array;
@@ -445,19 +470,7 @@ protected:
             }
             case shapes::MESH:
             {
-              // For a mesh, you might do uniform scale/padding
-              // but there's no single "setScale" in the base class.
-              // In the improved code we do it similarly to a sphere: single scale/padding
-              auto mesh_body = dynamic_cast<bodies::ConvexMesh*>(sl.body);
-              // Possibly store your scale/padding if you want a custom approach
-              // For now, no direct function calls for multi-scale, so do uniform or skip
-              // You might implement your own approach. For demonstration:
-              // We'll ignore multi-dim box/cylinder arrays for the mesh
-              // because it's not natively supported.
-              // That means we'd do uniform scale/padding in `updateInternalData()`,
-              // if implemented in ConvexMesh.
-              // -> No direct calls needed here. 
-              // (Or you could design a custom method to do it.)
+              // Mesh scaling and padding are not currently configurable.
               break;
             }
             default:
@@ -479,6 +492,8 @@ protected:
 
     bspheres_.resize(bodies_.size());
     bspheresRadius2_.resize(bodies_.size());
+    unscaledBspheres_.resize(bodies_.size());
+    unscaledBspheresRadius2_.resize(bodies_.size());
     return true;
   }
 
@@ -488,6 +503,9 @@ protected:
     {
       bodies_[i].body->computeBoundingSphere(bspheres_[i]);
       bspheresRadius2_[i] = bspheres_[i].radius * bspheres_[i].radius;
+      bodies_[i].unscaledBody->computeBoundingSphere(unscaledBspheres_[i]);
+      unscaledBspheresRadius2_[i] =
+        unscaledBspheres_[i].radius * unscaledBspheres_[i].radius;
     }
   }
 
@@ -505,9 +523,12 @@ protected:
       double dist2 = (pt - bound.center).length2();
       if (dist2 < radiusSq)
       {
-        for (auto &sl : bodies_)
+        for (size_t body_index = 0; body_index < bodies_.size(); ++body_index)
         {
-          if (sl.body->containsPoint(pt))
+          const double body_distance2 =
+            (pt - bspheres_[body_index].center).length2();
+          if (body_distance2 < bspheresRadius2_[body_index] &&
+              bodies_[body_index].body->containsPoint(pt))
           {
             out = INSIDE;
             break;
@@ -525,6 +546,8 @@ protected:
     bodies::BoundingSphere bound;
     bodies::mergeBoundingSpheres(bspheres_, bound);
     double radiusSq = bound.radius * bound.radius;
+    std::vector<tf2::Vector3> hits;
+    hits.reserve(2);
 
     for (size_t i = 0; i < data_in.points.size(); ++i)
     {
@@ -535,9 +558,12 @@ protected:
       // Quick check if inside the unscaled shape
       if (dist2 < radiusSq)
       {
-        for (auto &sl : bodies_)
+        for (size_t body_index = 0; body_index < bodies_.size(); ++body_index)
         {
-          if (sl.unscaledBody->containsPoint(pt))
+          const double body_distance2 =
+            (pt - unscaledBspheres_[body_index].center).length2();
+          if (body_distance2 < unscaledBspheresRadius2_[body_index] &&
+              bodies_[body_index].unscaledBody->containsPoint(pt))
           {
             out = INSIDE;
             break;
@@ -559,7 +585,7 @@ protected:
           // Ray intersect
           for (auto &sl : bodies_)
           {
-            std::vector<tf2::Vector3> hits;
+            hits.clear();
             if (sl.body->intersectsRay(pt, dir, &hits, 1))
             {
               tf2::Vector3 diff = sensor_pos_ - hits[0];
@@ -573,9 +599,12 @@ protected:
           }
           if (out == OUTSIDE && dist2 < radiusSq)
           {
-            for (auto &sl : bodies_)
+            for (size_t body_index = 0; body_index < bodies_.size(); ++body_index)
             {
-              if (sl.body->containsPoint(pt))
+              const double body_distance2 =
+                (pt - bspheres_[body_index].center).length2();
+              if (body_distance2 < bspheresRadius2_[body_index] &&
+                  bodies_[body_index].body->containsPoint(pt))
               {
                 out = INSIDE;
                 break;
@@ -596,6 +625,8 @@ protected:
   std::vector<SeeLink>     bodies_;
   std::vector<bodies::BoundingSphere> bspheres_;
   std::vector<double>      bspheresRadius2_;
+  std::vector<bodies::BoundingSphere> unscaledBspheres_;
+  std::vector<double>      unscaledBspheresRadius2_;
 };
 
 }  // namespace robot_self_filter

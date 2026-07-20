@@ -18,7 +18,7 @@ The `robot_self_filter` package removes points from sensor data that correspond 
 
 ### Prerequisites
 
-- ROS 2 (tested on Humble/Iron)
+- ROS 2 Jazzy
 - Dependencies:
   - `rclcpp`
   - `tf2_ros`
@@ -66,6 +66,7 @@ ros2 launch robot_self_filter self_filter.launch.py \
 | `zero_for_removed_points` | bool | `true` | Set filtered points to zero instead of removing |
 | `use_sim_time` | bool | `true` | Use simulation time |
 | `description_name` | string | `/robot_description` | Robot description parameter namespace |
+| `publish_collision_shapes` | bool | `true` | Publish debug collision markers when a subscriber is present |
 
 ## Configuration
 
@@ -218,7 +219,20 @@ See `params/example.yaml` for a complete configuration example for construction 
 4. **No output point cloud**
    - Verify input topic is publishing
    - Check remappings in launch file
-   - Ensure robot_description is loaded
+   - Ensure `robot_description` is loaded
+
+## Verification and performance
+
+The package includes geometry/filter regression tests, custom LiDAR point-layout coverage, an installed-node ROS smoke test, and a deterministic benchmark:
+
+```bash
+colcon build --packages-select robot_self_filter \
+  --cmake-args -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+colcon test --packages-select robot_self_filter
+colcon test-result --verbose
+```
+
+On the v1.1.0 reference run (Intel Core Ultra 7 258V, ROS 2 Jazzy, pinned CPU, 21 measured iterations), aggregate median filtering throughput improved by 27.4% over v1.0.0-era revision `8910134`, with unchanged classification checksums. Raw results and the fail-capable comparison tool are in `benchmark/results` and `test/compare_benchmarks.py`.
 
 ## Contributing
 

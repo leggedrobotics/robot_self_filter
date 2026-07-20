@@ -2,6 +2,27 @@
 Changelog for package robot_self_filter
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.1.0 (2026-07-20)
+------------------
+* Optimize box ray intersections and reuse ray-hit storage.
+* Add per-body bounding-sphere culling for containment checks.
+* Add deterministic correctness tests, a reproducible benchmark, and an installed-node smoke test.
+* Preserve organized-cloud metadata and initialize removed custom point fields deterministically.
+* Respect ``use_sim_time`` overrides and ``max_queue_size`` at runtime.
+* Bound per-cloud diagnostics and skip collision-marker work without subscribers.
+* Publish collision markers for every supported LiDAR point type.
+* Support prefixed TF frame names while matching their suffix to URDF links.
+* Validate mesh topology, resource sizes, and STL file sizes before conversion.
+* Declare and export direct Jazzy dependencies and verify downstream consumption.
+* Contributors: Lorenzo Terenzi
+
+1.0.0 (2025-08-19)
+------------------
+* First stable ROS 2 Humble source release.
+* Add support for generic, Ouster, Hesai, Robosense, and Pandar point clouds.
+* Add configurable per-shape scaling and padding plus collision-shape visualization.
+* Contributors: Lorenzo Terenzi
+
 0.1.30 (2017-01-20)
 -------------------
 * Fix typo in CMakeLists.txt: CATKIN-DEPENDS -> CATKIN_DEPENDS

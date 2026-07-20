@@ -1,13 +1,13 @@
 cmake_minimum_required(VERSION 3.8)
 cmake_policy(VERSION 3.28)
 
-project(robot_self_filter)
-
-unset(FLANN_ROOT CACHE)
-unset(FLANN_ROOT)
-if(DEFINED ENV{FLANN_ROOT})
-  set(ENV{FLANN_ROOT} "")
+if(POLICY CMP0144)
+  cmake_policy(SET CMP0144 NEW)
+  # PCL's legacy FindFLANN module does not set this policy itself.
+  set(CMAKE_POLICY_DEFAULT_CMP0144 NEW)
 endif()
+
+project(robot_self_filter)
 
 # Set C++ standard
 if(NOT CMAKE_CXX_STANDARD)
@@ -18,7 +18,6 @@ endif()
 # Find dependencies
 #
 find_package(ament_cmake REQUIRED)
-find_package(yaml-cpp REQUIRED)
 
 # ROS 2 packages
 find_package(rclcpp REQUIRED)
@@ -30,7 +29,6 @@ find_package(urdf REQUIRED)
 find_package(resource_retriever REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(pcl_conversions REQUIRED)
-find_package(pcl_msgs QUIET)  # optional
 find_package(pcl_ros REQUIRED) # or use pure PCL, depending on your usage
 find_package(filters REQUIRED)
 find_package(tinyxml2_vendor REQUIRED)
@@ -46,6 +44,11 @@ if(NOT assimp_FOUND)
   pkg_check_modules(ASSIMP REQUIRED assimp)
 endif()
 
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  find_package(ament_cmake_pytest REQUIRED)
+endif()
+
 #
 # Include dirs
 #
@@ -58,7 +61,6 @@ include_directories(
   ${ASSIMP_INCLUDE_DIRS}
   ${PCL_INCLUDE_DIRS}
   ${FILTERS_INCLUDE_DIRS}
-  ${YAML_CPP_INCLUDE_DIRS}
 )
 
 #
@@ -121,7 +123,6 @@ target_link_libraries(self_filter
   ${PROJECT_NAME}
   robot_geometric_shapes
   ${ASSIMP_LIBRARIES}
-  ${YAML_CPP_LIBRARIES}
 )
 
 #
@@ -136,6 +137,7 @@ ament_target_dependencies(robot_geometric_shapes
   urdf
   resource_retriever
   visualization_msgs
+  pcl_conversions
   pcl_ros  # or pcl_conversions
   filters
   tinyxml2_vendor
@@ -150,6 +152,7 @@ ament_target_dependencies(${PROJECT_NAME}
   urdf
   resource_retriever
   visualization_msgs
+  pcl_conversions
   pcl_ros  # or pcl_conversions
   filters
   tinyxml2_vendor
@@ -177,10 +180,60 @@ ament_target_dependencies(self_filter
   urdf
   resource_retriever
   visualization_msgs
+  pcl_conversions
   pcl_ros  # or pcl_conversions
   filters
   tinyxml2_vendor
 )
+
+if(BUILD_TESTING)
+  set(robot_self_filter_test_dependencies
+    rclcpp
+    tf2
+    tf2_ros
+    geometry_msgs
+    sensor_msgs
+    urdf
+    resource_retriever
+    visualization_msgs
+    pcl_conversions
+    pcl_ros
+    filters
+    tinyxml2_vendor
+  )
+
+  ament_add_gtest(test_bodies
+    test/test_bodies.cpp
+  )
+  target_link_libraries(test_bodies
+    robot_geometric_shapes
+    ${PROJECT_NAME}
+  )
+  ament_target_dependencies(test_bodies ${robot_self_filter_test_dependencies})
+
+  ament_add_gtest(test_self_filter
+    test/test_self_filter.cpp
+  )
+  target_link_libraries(test_self_filter
+    robot_geometric_shapes
+    ${PROJECT_NAME}
+  )
+  ament_target_dependencies(test_self_filter ${robot_self_filter_test_dependencies})
+
+  add_executable(robot_self_filter_benchmark
+    test/benchmark_self_mask.cpp
+  )
+  target_link_libraries(robot_self_filter_benchmark
+    robot_geometric_shapes
+    ${PROJECT_NAME}
+  )
+  ament_target_dependencies(robot_self_filter_benchmark ${robot_self_filter_test_dependencies})
+
+  ament_add_pytest_test(test_node_smoke
+    test/test_node_smoke.py
+    TIMEOUT 30
+  )
+endif()
 
 #
 # Install
@@ -232,7 +285,9 @@ ament_export_dependencies(
   urdf
   resource_retriever
   visualization_msgs
+  pcl_conversions
   pcl_ros
+  filters
   assimp
   tinyxml2_vendor
   # bullet  <-- Usually remove this, unless you have a custom bullet ROS package

@@ -1,10 +1,12 @@
 // ============================ self_filter.cpp ============================
 #include <chrono>
+#include <cinttypes>
 #include <sstream>
 #include <memory>
 
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
+#include <std_msgs/msg/header.hpp>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/create_timer_ros.h>
 #include <tf2_ros/transform_listener.h>
@@ -16,7 +18,6 @@
 #include "robot_self_filter/point_pandar.h"
 #include "robot_self_filter/point_robosense.h"
 
-#include <yaml-cpp/yaml.h>
 #include <robot_self_filter/bodies.h>
 #include <robot_self_filter/shapes.h>
 
@@ -39,15 +40,6 @@ namespace robot_self_filter
     SelfFilterNode()
         : Node("self_filter")
     {
-      try
-      {
-        this->declare_parameter<bool>("use_sim_time", true);
-        this->set_parameter(rclcpp::Parameter("use_sim_time", true));
-      }
-      catch (const rclcpp::exceptions::ParameterAlreadyDeclaredException &)
-      {
-      }
-
       this->declare_parameter<std::string>("sensor_frame", "Lidar"); // Default value
       // this->set_parameter(rclcpp::Parameter("sensor_frame", "Lidar")); // Removed explicit set
       this->declare_parameter<bool>("use_rgb", false);
@@ -55,20 +47,29 @@ namespace robot_self_filter
       this->declare_parameter<int>("lidar_sensor_type", 0);
       this->declare_parameter<std::string>("robot_description", "");
       this->declare_parameter<std::string>("in_pointcloud_topic", "/cloud_in");
+      this->declare_parameter<bool>("publish_collision_shapes", true);
 
       sensor_frame_ = this->get_parameter("sensor_frame").as_string();
       use_rgb_ = this->get_parameter("use_rgb").as_bool();
       max_queue_size_ = this->get_parameter("max_queue_size").as_int();
-      int temp_sensor_type = this->get_parameter("lidar_sensor_type").as_int();
+      const int64_t temp_sensor_type = this->get_parameter("lidar_sensor_type").as_int();
       sensor_type_ = static_cast<SensorType>(temp_sensor_type);
       in_topic_ = this->get_parameter("in_pointcloud_topic").as_string();
+      publish_collision_shapes_ = this->get_parameter("publish_collision_shapes").as_bool();
+      if (max_queue_size_ < 1)
+      {
+        RCLCPP_WARN(this->get_logger(), "max_queue_size must be positive; using 1");
+        max_queue_size_ = 1;
+      }
 
       RCLCPP_INFO(this->get_logger(), "Parameters:");
       RCLCPP_INFO(this->get_logger(), "  sensor_frame: %s", sensor_frame_.c_str());
       RCLCPP_INFO(this->get_logger(), "  use_rgb: %s", use_rgb_ ? "true" : "false");
-      RCLCPP_INFO(this->get_logger(), "  max_queue_size: %d", max_queue_size_);
-      RCLCPP_INFO(this->get_logger(), "  lidar_sensor_type: %d", temp_sensor_type);
+      RCLCPP_INFO(this->get_logger(), "  max_queue_size: %" PRId64, max_queue_size_);
+      RCLCPP_INFO(this->get_logger(), "  lidar_sensor_type: %" PRId64, temp_sensor_type);
       RCLCPP_INFO(this->get_logger(), "  in_pointcloud_topic: %s", in_topic_.c_str());
+      RCLCPP_INFO(this->get_logger(), "  publish_collision_shapes: %s",
+                  publish_collision_shapes_ ? "true" : "false");
 
       tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
       tf_buffer_->setCreateTimerInterface(
@@ -88,8 +89,6 @@ namespace robot_self_filter
 
     void initSelfFilter()
     {
-      std::string robot_description_xml = this->get_parameter("robot_description").as_string();
-
       switch (sensor_type_)
       {
       case SensorType::XYZSensor:
@@ -111,6 +110,10 @@ namespace robot_self_filter
         self_filter_ = std::make_shared<filters::SelfFilter<PointPandar>>(this->shared_from_this());
         break;
       default:
+        RCLCPP_WARN(this->get_logger(),
+                    "Unknown lidar_sensor_type %d; falling back to generic XYZ",
+                    static_cast<int>(sensor_type_));
+        sensor_type_ = SensorType::XYZSensor;
         self_filter_ = std::make_shared<filters::SelfFilter<pcl::PointXYZ>>(this->shared_from_this());
         break;
       }
@@ -118,7 +121,8 @@ namespace robot_self_filter
       self_filter_->getLinkNames(frames_);
 
       // Subscribe to input cloud with sensor data QoS (BEST_EFFORT)
-      rclcpp::QoS input_qos = rclcpp::SensorDataQoS();
+      rclcpp::QoS input_qos = rclcpp::SensorDataQoS().keep_last(
+        static_cast<std::size_t>(max_queue_size_));
       sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
           in_topic_,
           input_qos,
@@ -128,18 +132,24 @@ namespace robot_self_filter
   private:
     void cloudCallback(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &cloud)
     {
-      RCLCPP_INFO(this->get_logger(), "Received cloud message with timestamp %.6f",
-                  rclcpp::Time(cloud->header.stamp).seconds());
-
-      RCLCPP_INFO(this->get_logger(), "Point cloud size: width = %d, height = %d, total points = %d",
-                  cloud->width, cloud->height, cloud->width * cloud->height);
-
       sensor_msgs::msg::PointCloud2 out2;
       int input_size = 0;
       int output_size = 0;
 
       self_filter_->fillPointCloud2(cloud, sensor_frame_, out2, input_size, output_size);
       pointCloudPublisher_->publish(out2);
+
+      RCLCPP_DEBUG_THROTTLE(
+        this->get_logger(), *this->get_clock(), 5000,
+        "Filtered cloud stamp=%.6f input=%d output=%d",
+        rclcpp::Time(cloud->header.stamp).seconds(), input_size, output_size);
+
+      if (!publish_collision_shapes_ ||
+          (marker_pub_->get_subscription_count() == 0U &&
+           marker_pub_->get_intra_process_subscription_count() == 0U))
+      {
+        return;
+      }
 
       switch (sensor_type_)
       {
@@ -149,7 +159,15 @@ namespace robot_self_filter
         if (!sf_xyz)
           return;
         auto mask = sf_xyz->getSelfMaskPtr();
-        publishShapesFromMask(mask, cloud->header.frame_id);
+        publishShapesFromMask(mask, cloud->header);
+        break;
+      }
+      case SensorType::XYZRGBSensor:
+      {
+        auto filter = std::dynamic_pointer_cast<filters::SelfFilter<pcl::PointXYZRGB>>(self_filter_);
+        if (!filter)
+          return;
+        publishShapesFromMask(filter->getSelfMaskPtr(), cloud->header);
         break;
       }
       case SensorType::OusterSensor:
@@ -158,31 +176,57 @@ namespace robot_self_filter
         if (!sf_ouster)
           return;
         auto mask = sf_ouster->getSelfMaskPtr();
-        publishShapesFromMask(mask, cloud->header.frame_id);
+        publishShapesFromMask(mask, cloud->header);
+        break;
+      }
+      case SensorType::HesaiSensor:
+      {
+        auto filter = std::dynamic_pointer_cast<filters::SelfFilter<PointHesai>>(self_filter_);
+        if (!filter)
+          return;
+        publishShapesFromMask(filter->getSelfMaskPtr(), cloud->header);
+        break;
+      }
+      case SensorType::RobosenseSensor:
+      {
+        auto filter = std::dynamic_pointer_cast<filters::SelfFilter<PointRobosense>>(self_filter_);
+        if (!filter)
+          return;
+        publishShapesFromMask(filter->getSelfMaskPtr(), cloud->header);
+        break;
+      }
+      case SensorType::PandarSensor:
+      {
+        auto filter = std::dynamic_pointer_cast<filters::SelfFilter<PointPandar>>(self_filter_);
+        if (!filter)
+          return;
+        publishShapesFromMask(filter->getSelfMaskPtr(), cloud->header);
         break;
       }
       default:
-        RCLCPP_ERROR(this->get_logger(), "Sensor type not handled for shape publishing");
         return;
       }
     }
 
     template <typename PointT>
-    void publishShapesFromMask(robot_self_filter::SelfMask<PointT> *mask, const std::string &pointcloud_frame)
+    void publishShapesFromMask(
+      robot_self_filter::SelfMask<PointT> *mask,
+      const std_msgs::msg::Header &pointcloud_header)
     {
       if (!mask)
         return;
       const auto &bodies = mask->getBodies();
       if (bodies.empty())
       {
-        RCLCPP_ERROR(this->get_logger(), "No bodies found in SelfMask");
+        RCLCPP_DEBUG_THROTTLE(
+          this->get_logger(), *this->get_clock(), 5000,
+          "No collision bodies are configured for visualization");
         return;
       }
 
       visualization_msgs::msg::MarkerArray marker_array;
       marker_array.markers.reserve(bodies.size());
 
-      std::string shapes_frame = pointcloud_frame;
       for (size_t i = 0; i < bodies.size(); ++i)
       {
         const auto &see_link = bodies[i];
@@ -191,8 +235,7 @@ namespace robot_self_filter
           continue;
 
         visualization_msgs::msg::Marker mk;
-        mk.header.frame_id = shapes_frame;
-        mk.header.stamp = this->get_clock()->now();
+        mk.header = pointcloud_header;
         mk.ns = "self_filter_shapes";
         mk.id = static_cast<int>(i);
         mk.action = visualization_msgs::msg::Marker::ADD;
@@ -285,7 +328,9 @@ namespace robot_self_filter
       }
 
       marker_pub_->publish(marker_array);
-      RCLCPP_INFO(this->get_logger(), "Published %zu collision shapes", marker_array.markers.size());
+      RCLCPP_DEBUG_THROTTLE(
+        this->get_logger(), *this->get_clock(), 5000,
+        "Published %zu collision shapes", marker_array.markers.size());
     }
 
     std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
@@ -299,9 +344,10 @@ namespace robot_self_filter
     std::string sensor_frame_;
     bool use_rgb_;
     SensorType sensor_type_;
-    int max_queue_size_;
+    int64_t max_queue_size_;
     std::vector<std::string> frames_;
     std::string in_topic_;
+    bool publish_collision_shapes_;
   };
 
 } // namespace robot_self_filter
