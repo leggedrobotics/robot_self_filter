@@ -46,3 +46,12 @@
 - ASan and UBSan passed all exercised paths. LeakSanitizer also passed all 19 C++ unit cases. Leak detection was disabled only for the process-level smoke because ROS Jazzy reports shutdown allocations in `librcl` type-description caches; the smoke passes under ASan/UBSan, passes cleanly without instrumentation, and produced no package-owned sanitizer finding.
 - A fresh standalone consumer found installed package version 1.1.0 from the isolated prefix, configured, linked, and ran successfully. `rosdep check`, `ament_xmllint`, `ament_flake8`, and `git diff --check` passed.
 - Next: publish through the authorized branch/PR workflow, build and test a source-only archive of the merged commit, tag `v1.1.0`, create the public Jazzy source release, and record remote readback in `RESULT.md`.
+
+## 2026-07-20 — Archive gate and shutdown correction
+
+- Merged the primary implementation through PR #8 as `98f5c9e`, then generated a source-only archive and built it with `AMENT_PREFIX_PATH=/opt/ros/jazzy` and no workspace install paths.
+- Repeating the installed-node smoke exposed an intermittent shutdown crash after SIGINT (`malloc_consolidate(): unaligned fastbin chunk detected` or SIGSEGV). This had escaped the initial single-run gate, so release publication remained paused.
+- The node constructed an unused TF buffer/listener while the active templated filter already owned the TF listener used by `SelfMask`. Removing that duplicate listener eliminated the competing hidden TF executor/thread without changing the active transform path.
+- The corrected strict-warning Release build passes the full 20-check suite and 10 consecutive process-level smoke runs. The corrected sanitizer build passes all C++ unit cases with ASan/UBSan/LSan and five consecutive smoke runs with ASan/UBSan.
+- Benchmark outputs and classification checksums remain unchanged because the correction only removes unused node initialization and shutdown state.
+- Next: merge the shutdown correction, regenerate the archive from the new `main` commit, and complete the tag/release readback.
