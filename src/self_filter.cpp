@@ -7,9 +7,6 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <std_msgs/msg/header.hpp>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/create_timer_ros.h>
-#include <tf2_ros/transform_listener.h>
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include "robot_self_filter/self_see_filter.h"
@@ -70,13 +67,6 @@ namespace robot_self_filter
       RCLCPP_INFO(this->get_logger(), "  in_pointcloud_topic: %s", in_topic_.c_str());
       RCLCPP_INFO(this->get_logger(), "  publish_collision_shapes: %s",
                   publish_collision_shapes_ ? "true" : "false");
-
-      tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
-      tf_buffer_->setCreateTimerInterface(
-          std::make_shared<tf2_ros::CreateTimerROS>(
-              this->get_node_base_interface(),
-              this->get_node_timers_interface()));
-      tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
       // Publish filtered cloud as sensor data QoS (BEST_EFFORT) for high-rate streams
       pointCloudPublisher_ =
@@ -333,8 +323,6 @@ namespace robot_self_filter
         "Published %zu collision shapes", marker_array.markers.size());
     }
 
-    std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
-    std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
     std::shared_ptr<filters::SelfFilterInterface> self_filter_;
 
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_;

@@ -9,6 +9,7 @@ Changelog for package robot_self_filter
 * Add deterministic correctness tests, a reproducible benchmark, and an installed-node smoke test.
 * Preserve organized-cloud metadata and initialize removed custom point fields deterministically.
 * Respect ``use_sim_time`` overrides and ``max_queue_size`` at runtime.
+* Remove an unused duplicate TF listener that could corrupt shutdown during rapid SIGINT.
 * Bound per-cloud diagnostics and skip collision-marker work without subscribers.
 * Publish collision markers for every supported LiDAR point type.
 * Support prefixed TF frame names while matching their suffix to URDF links.
