@@ -55,3 +55,11 @@
 - The corrected strict-warning Release build passes the full 20-check suite and 10 consecutive process-level smoke runs. The corrected sanitizer build passes all C++ unit cases with ASan/UBSan/LSan and five consecutive smoke runs with ASan/UBSan.
 - Benchmark outputs and classification checksums remain unchanged because the correction only removes unused node initialization and shutdown state.
 - Next: merge the shutdown correction, regenerate the archive from the new `main` commit, and complete the tag/release readback.
+
+## 2026-07-20 — Release complete
+
+- Merged the shutdown correction through PR #9 as `65f5b01ebb7a24ef88b5a79febaed62ae326c510`.
+- Generated a fresh archive from that exact commit, built/tested it with only `/opt/ros/jazzy` in `AMENT_PREFIX_PATH`, and passed the full suite plus 10 consecutive smoke runs. Archive SHA-256: `312668cf5d01592e2be4bba72b8cccb7cff71188547cc1100fea64313989c1ff`.
+- Reconfirmed the standalone downstream consumer against the archive install and reran XML/Python lint, dependency resolution, and whitespace checks successfully.
+- Pushed annotated tag `v1.1.0`; its peeled remote ref is the verified commit. Published the non-draft, non-prerelease latest GitHub release at <https://github.com/leggedrobotics/robot_self_filter/releases/tag/v1.1.0>.
+- Recorded the complete proof, exact commands, raw metrics, remote readback, and limitations in `RESULT.md`.
