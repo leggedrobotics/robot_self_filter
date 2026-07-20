@@ -11,9 +11,13 @@
 *********************************************************************/
 
 #include <cstdio>
+#include <cstdint>
+#include <cstring>
 #include <cmath>
 #include <algorithm>
+#include <limits>
 #include <set>
+#include <vector>
 
 // ROS 2
 #include <rclcpp/rclcpp.hpp>               
@@ -329,9 +333,19 @@ namespace detail
 shapes::Mesh* createMeshFromVertices(const std::vector<tf2::Vector3> &vertices,
                                      const std::vector<unsigned int> &triangles)
 {
-  unsigned int nt = triangles.size() / 3;
-  shapes::Mesh* mesh = new shapes::Mesh(vertices.size(), nt);
-  for (unsigned int i = 0; i < vertices.size(); ++i)
+  if (triangles.size() % 3U != 0U ||
+      vertices.size() > std::numeric_limits<unsigned int>::max() ||
+      triangles.size() / 3U > std::numeric_limits<unsigned int>::max() ||
+      std::any_of(triangles.begin(), triangles.end(),
+        [&vertices](const unsigned int index) {return index >= vertices.size();}))
+  {
+    return nullptr;
+  }
+
+  const unsigned int vertex_count = static_cast<unsigned int>(vertices.size());
+  const unsigned int triangle_count = static_cast<unsigned int>(triangles.size() / 3U);
+  shapes::Mesh* mesh = new shapes::Mesh(vertex_count, triangle_count);
+  for (unsigned int i = 0; i < vertex_count; ++i)
   {
     mesh->vertices[3 * i    ] = vertices[i].x();
     mesh->vertices[3 * i + 1] = vertices[i].y();
@@ -341,7 +355,7 @@ shapes::Mesh* createMeshFromVertices(const std::vector<tf2::Vector3> &vertices,
   std::copy(triangles.begin(), triangles.end(), mesh->triangles);
 
   // compute normals
-  for (unsigned int i = 0; i < nt; ++i)
+  for (unsigned int i = 0; i < triangle_count; ++i)
   {
     tf2::Vector3 s1 = vertices[triangles[3*i    ]] - vertices[triangles[3*i + 1]];
     tf2::Vector3 s2 = vertices[triangles[3*i + 1]] - vertices[triangles[3*i + 2]];
@@ -372,7 +386,9 @@ shapes::Mesh* createMeshFromVertices(const std::vector<tf2::Vector3> &source)
     auto p1 = vertices.find(vt);
     if (p1 == vertices.end())
     {
-      vt.index = vertices.size();
+      if (vertices.size() >= std::numeric_limits<unsigned int>::max())
+        return nullptr;
+      vt.index = static_cast<unsigned int>(vertices.size());
       vertices.insert(vt);
     }
     else
@@ -385,7 +401,9 @@ shapes::Mesh* createMeshFromVertices(const std::vector<tf2::Vector3> &source)
     auto p2 = vertices.find(vt);
     if (p2 == vertices.end())
     {
-      vt.index = vertices.size();
+      if (vertices.size() >= std::numeric_limits<unsigned int>::max())
+        return nullptr;
+      vt.index = static_cast<unsigned int>(vertices.size());
       vertices.insert(vt);
     }
     else
@@ -398,7 +416,9 @@ shapes::Mesh* createMeshFromVertices(const std::vector<tf2::Vector3> &source)
     auto p3 = vertices.find(vt);
     if (p3 == vertices.end())
     {
-      vt.index = vertices.size();
+      if (vertices.size() >= std::numeric_limits<unsigned int>::max())
+        return nullptr;
+      vt.index = static_cast<unsigned int>(vertices.size());
       vertices.insert(vt);
     }
     else
@@ -414,10 +434,16 @@ shapes::Mesh* createMeshFromVertices(const std::vector<tf2::Vector3> &source)
   std::sort(vt.begin(), vt.end(), detail::ltVertexIndex());
 
   // Build the actual Mesh
-  unsigned int nt = triangles.size() / 3;
-  shapes::Mesh* mesh = new shapes::Mesh(vt.size(), nt);
+  if (vt.size() > std::numeric_limits<unsigned int>::max() ||
+      triangles.size() / 3U > std::numeric_limits<unsigned int>::max())
+  {
+    return nullptr;
+  }
+  const unsigned int vertex_count = static_cast<unsigned int>(vt.size());
+  const unsigned int triangle_count = static_cast<unsigned int>(triangles.size() / 3U);
+  shapes::Mesh* mesh = new shapes::Mesh(vertex_count, triangle_count);
 
-  for (unsigned int i = 0; i < vt.size(); ++i)
+  for (unsigned int i = 0; i < vertex_count; ++i)
   {
     mesh->vertices[3 * i    ] = vt[i].point.x();
     mesh->vertices[3 * i + 1] = vt[i].point.y();
@@ -426,7 +452,7 @@ shapes::Mesh* createMeshFromVertices(const std::vector<tf2::Vector3> &source)
   std::copy(triangles.begin(), triangles.end(), mesh->triangles);
 
   // compute normals
-  for (unsigned int i = 0; i < nt; ++i)
+  for (unsigned int i = 0; i < triangle_count; ++i)
   {
     tf2::Vector3 s1 = vt[triangles[3*i    ]].point - vt[triangles[3*i + 1]].point;
     tf2::Vector3 s2 = vt[triangles[3*i + 1]].point - vt[triangles[3*i + 2]].point;
@@ -441,24 +467,33 @@ shapes::Mesh* createMeshFromVertices(const std::vector<tf2::Vector3> &source)
 
 shapes::Mesh* createMeshFromBinaryStlData(const char* data, unsigned int size)
 {
+  constexpr unsigned int header_size = 84U;
+  constexpr std::uint64_t triangle_record_size = 50U;
+  if (data == nullptr || size < header_size)
+    return nullptr;
+
   const char* pos = data;
   pos += 80;  // skip 80-byte header
-  unsigned int numTriangles = *(reinterpret_cast<const unsigned int*>(pos));
+  std::uint32_t numTriangles = 0U;
+  std::memcpy(&numTriangles, pos, sizeof(numTriangles));
   pos += 4;
 
-  if (static_cast<long>(50 * numTriangles + 84) <= static_cast<long>(size))
+  const std::uint64_t required_size = static_cast<std::uint64_t>(header_size) +
+    triangle_record_size * static_cast<std::uint64_t>(numTriangles);
+  if (required_size <= static_cast<std::uint64_t>(size))
   {
     std::vector<tf2::Vector3> vertices;
-    vertices.reserve(numTriangles * 3);
+    vertices.reserve(static_cast<size_t>(numTriangles) * 3U);
 
-    for (unsigned int currentTriangle = 0; currentTriangle < numTriangles; ++currentTriangle)
+    for (std::uint32_t currentTriangle = 0; currentTriangle < numTriangles; ++currentTriangle)
     {
       // skip the normal
       pos += 12;
 
       // read vertices
       tf2::Vector3 v1, v2, v3;
-      float* floats = (float*)pos;
+      float floats[9];
+      std::memcpy(floats, pos, sizeof(floats));
       v1.setX(floats[0]);
       v1.setY(floats[1]);
       v1.setZ(floats[2]);
@@ -514,15 +549,21 @@ shapes::Mesh* createMeshFromBinaryStl(const char* filename)
   long fileSize = ftell(input);
   fseek(input, 0, SEEK_SET);
 
-  char* buffer = new char[fileSize];
-  size_t rd = fread(buffer, fileSize, 1, input);
+  if (fileSize <= 0 ||
+      static_cast<unsigned long>(fileSize) > std::numeric_limits<unsigned int>::max())
+  {
+    fclose(input);
+    return nullptr;
+  }
+
+  std::vector<char> buffer(static_cast<size_t>(fileSize));
+  size_t rd = fread(buffer.data(), static_cast<size_t>(fileSize), 1, input);
   fclose(input);
 
   shapes::Mesh* result = nullptr;
   if (rd == 1)
-    result = createMeshFromBinaryStlData(buffer, fileSize);
-
-  delete[] buffer;
+    result = createMeshFromBinaryStlData(
+      buffer.data(), static_cast<unsigned int>(fileSize));
   return result;
 }
 

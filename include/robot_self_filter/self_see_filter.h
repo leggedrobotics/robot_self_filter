@@ -3,6 +3,7 @@
 #define FILTERS_SELF_SEE_H_
 
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
 #include <limits>
@@ -176,11 +177,17 @@ protected:
 
   void fillResult(const PointCloud &data_in, const std::vector<int> &keep, PointCloud &data_out)
   {
+    if (keep.size() != data_in.points.size())
+      throw std::invalid_argument("self-filter mask size does not match point cloud size");
+
     data_out.header = data_in.header;
+    data_out.sensor_origin_ = data_in.sensor_origin_;
+    data_out.sensor_orientation_ = data_in.sensor_orientation_;
+    data_out.is_dense = data_in.is_dense;
     data_out.points.clear();
     data_out.points.reserve(data_in.points.size());
 
-    PointT blank_pt;
+    PointT blank_pt{};
     if (zero_for_removed_points_)
     {
       blank_pt.x = 0.0f;
@@ -208,6 +215,8 @@ protected:
       else if (keep_organized_)
       {
         data_out.points.push_back(blank_pt);
+        if (!zero_for_removed_points_)
+          data_out.is_dense = false;
       }
     }
 

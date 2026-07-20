@@ -290,8 +290,9 @@ bool Cylinder::intersectsRay(const tf2::Vector3 &origin,
   }
   if (ipts.empty()) return false;
   std::sort(ipts.begin(), ipts.end(), detail::interscOrder());
-  unsigned int n = (count > 0) ? std::min<unsigned int>(count, ipts.size()) : ipts.size();
-  for (unsigned int i = 0; i < n; ++i)
+  const size_t n = count > 0 ?
+    std::min(static_cast<size_t>(count), ipts.size()) : ipts.size();
+  for (size_t i = 0; i < n; ++i)
     intersections->push_back(ipts[i].pt);
   return true;
 }
@@ -350,34 +351,42 @@ bool Box::intersectsRay(const tf2::Vector3 &origin,
                         std::vector<tf2::Vector3> *intersections,
                         unsigned int count) const
 {
-  if (distanceSQR(m_center, origin, dir) > m_radius2) return false;
+  const tf2::Vector3 center_offset = m_center - origin;
+  const double center_projection = dir.dot(center_offset);
+  if (center_projection < -m_radiusB ||
+      center_offset.length2() - center_projection * center_projection > m_radius2)
+  {
+    return false;
+  }
 
   double t_near = -std::numeric_limits<double>::infinity();
   double t_far  = std::numeric_limits<double>::infinity();
 
-  for (int i = 0; i < 3; i++)
+  // Project the ray into the box's local basis. The previous implementation
+  // recomputed both world-space slab planes from the two corners for every
+  // ray (twelve dot products total). Local symmetric extents need only the
+  // origin and direction projections (six dot products total).
+  const tf2::Vector3 local_origin = origin - m_center;
+  const auto update_slab = [&](const tf2::Vector3 &normal, const double half_extent)
   {
-    const tf2::Vector3 &vN = (i == 0 ? m_normalL : (i == 1 ? m_normalW : m_normalH));
-    double dp = vN.dot(dir);
-    double c1 = (i == 0 ? m_corner1.dot(vN) : (i == 1 ? m_corner1.dot(vN) : m_corner1.dot(vN)));
-    double c2 = (i == 0 ? m_corner2.dot(vN) : (i == 1 ? m_corner2.dot(vN) : m_corner2.dot(vN)));
-    if (std::fabs(dp) > ZERO)
+    const double direction_projection = normal.dot(dir);
+    const double origin_projection = normal.dot(local_origin);
+    if (std::fabs(direction_projection) > ZERO)
     {
-      double t1 = (c1 - vN.dot(origin)) / dp;
-      double t2 = (c2 - vN.dot(origin)) / dp;
+      double t1 = (-half_extent - origin_projection) / direction_projection;
+      double t2 = (half_extent - origin_projection) / direction_projection;
       if (t1 > t2) std::swap(t1, t2);
       if (t1 > t_near) t_near = t1;
       if (t2 < t_far)  t_far  = t2;
-      if (t_near > t_far) return false;
-      if (t_far < 0.0) return false;
+      return t_near <= t_far && t_far >= 0.0;
     }
-    else
-    {
-      // If dp=0, check if origin is outside the slab
-      double val = vN.dot(origin);
-      if ((val < c1) || (val > c2)) return false;
-    }
-  }
+    return origin_projection >= -half_extent && origin_projection <= half_extent;
+  };
+
+  if (!update_slab(m_normalL, m_length2) ||
+      !update_slab(m_normalW, m_width2) ||
+      !update_slab(m_normalH, m_height2))
+    return false;
   if (intersections)
   {
     if ((t_far - t_near) > ZERO)
@@ -425,8 +434,8 @@ bool ConvexMesh::intersectsRay(const tf2::Vector3 &origin,
 
   std::vector<detail::intersc> ipts;
   bool result = false;
-  unsigned int nt = m_triangles.size() / 3;
-  for (unsigned int i = 0; i < nt; ++i)
+  const size_t nt = m_triangles.size() / 3;
+  for (size_t i = 0; i < nt; ++i)
   {
     const Eigen::Vector4d &plane = m_planes[i];
     double denom = plane(0)*dr.x() + plane(1)*dr.y() + plane(2)*dr.z();
@@ -435,9 +444,9 @@ bool ConvexMesh::intersectsRay(const tf2::Vector3 &origin,
     double t = numer / denom;
     if (t > 0.0)
     {
-      int v1 = m_triangles[3*i+0];
-      int v2 = m_triangles[3*i+1];
-      int v3 = m_triangles[3*i+2];
+      const unsigned int v1 = m_triangles[3*i+0];
+      const unsigned int v2 = m_triangles[3*i+1];
+      const unsigned int v3 = m_triangles[3*i+2];
       const tf2::Vector3 &a = m_scaledVertices[v1];
       const tf2::Vector3 &b = m_scaledVertices[v2];
       const tf2::Vector3 &c = m_scaledVertices[v3];
@@ -467,8 +476,9 @@ bool ConvexMesh::intersectsRay(const tf2::Vector3 &origin,
   if (intersections && !ipts.empty())
   {
     std::sort(ipts.begin(), ipts.end(), detail::interscOrder());
-    unsigned int n = (count > 0) ? std::min<unsigned int>(count, ipts.size()) : ipts.size();
-    for (unsigned int i = 0; i < n; ++i)
+    const size_t n = count > 0 ?
+      std::min(static_cast<size_t>(count), ipts.size()) : ipts.size();
+    for (size_t i = 0; i < n; ++i)
       intersections->push_back(ipts[i].pt);
   }
   return result;
@@ -503,8 +513,12 @@ void ConvexMesh::useDimensions(const shapes::Shape *shape)
     double vx = mesh->vertices[3*i];
     double vy = mesh->vertices[3*i+1];
     double vz = mesh->vertices[3*i+2];
-    if (vx>maxX) maxX=vx; if (vy>maxY) maxY=vy; if (vz>maxZ) maxZ=vz;
-    if (vx<minX) minX=vx; if (vy<minY) minY=vy; if (vz<minZ) minZ=vz;
+    if (vx > maxX) maxX = vx;
+    if (vy > maxY) maxY = vy;
+    if (vz > maxZ) maxZ = vz;
+    if (vx < minX) minX = vx;
+    if (vy < minY) minY = vy;
+    if (vz < minZ) minZ = vz;
   }
   shapes::Box *box_shape = new shapes::Box(maxX-minX, maxY-minY, maxZ-minZ);
   m_boundingBox.setDimensions(box_shape);
@@ -519,7 +533,10 @@ void ConvexMesh::useDimensions(const shapes::Shape *shape)
 
   btVector3 *vertices = new btVector3[mesh->vertexCount];
   for (unsigned int i=0; i<mesh->vertexCount; i++)
-    vertices[i].setValue(mesh->vertices[3*i], mesh->vertices[3*i+1], mesh->vertices[3*i+2]);
+    vertices[i].setValue(
+      static_cast<btScalar>(mesh->vertices[3*i]),
+      static_cast<btScalar>(mesh->vertices[3*i+1]),
+      static_cast<btScalar>(mesh->vertices[3*i+2]));
 
   HullDesc hd(QF_TRIANGLES, mesh->vertexCount, vertices);
   HullResult hr;
@@ -528,7 +545,7 @@ void ConvexMesh::useDimensions(const shapes::Shape *shape)
   {
     tf2::Vector3 sum(0,0,0);
     m_vertices.reserve(hr.m_OutputVertices.size());
-    for (size_t j=0; j<hr.m_OutputVertices.size(); j++)
+    for (int j = 0; j < hr.m_OutputVertices.size(); ++j)
     {
       tf2::Vector3 v(hr.m_OutputVertices[j][0],
                      hr.m_OutputVertices[j][1],

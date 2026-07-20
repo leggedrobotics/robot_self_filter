@@ -1,0 +1,21 @@
+self_filter:
+  ros__parameters:
+    use_sim_time: false
+    sensor_frame: ""
+    lidar_sensor_type: 0
+    keep_organized: false
+    zero_for_removed_points: false
+    invert: false
+    publish_collision_shapes: false
+    default_sphere_scale: 1.0
+    default_sphere_padding: 0.0
+    self_see_links:
+      names: [robot]
+    robot_description: |
+      <robot name="smoke_robot">
+        <link name="robot">
+          <collision>
+            <geometry><sphere radius="1.0"/></geometry>
+          </collision>
+        </link>
+      </robot>
