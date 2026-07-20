@@ -1,5 +1,5 @@
-# ============================ filter_improved.yaml ============================
-self_filter_ouster_horizontal:
+# Example robot_self_filter configuration for construction equipment.
+self_filter:
   ros__parameters:
     sensor_frame: "Lidar"
 
