@@ -95,6 +95,7 @@ public:
       std::string cyl_padding_key = "self_see_links." + lname + ".cylinder_padding";
       std::string padding_key     = "self_see_links." + lname + ".padding";
       std::string scale_key       = "self_see_links." + lname + ".scale";
+      std::string shadow_key      = "self_see_links." + lname + ".shadow";
 
       node_->declare_parameter<std::vector<double>>(box_scale_key,
         std::vector<double>(), rcl_interfaces::msg::ParameterDescriptor());
@@ -118,6 +119,9 @@ public:
       node_->get_parameter(scale_key, link_scl);
       li.padding = link_pad;
       li.scale   = link_scl;
+
+      node_->declare_parameter<bool>(shadow_key, true, rcl_interfaces::msg::ParameterDescriptor());
+      node_->get_parameter(shadow_key, li.shadow);
 
       links.push_back(li);
     }

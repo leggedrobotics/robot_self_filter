@@ -35,6 +35,10 @@ struct LinkInfo
 {
   std::string name;
 
+  // Whether this link rejects points whose sensor ray intersects its body.
+  // Containment filtering remains enabled regardless of this setting.
+  bool shadow = true;
+
   // Fallback single scale/padding
   double scale   = 1.0;
   double padding = 0.01;
@@ -124,12 +128,13 @@ class SelfMask
 protected:
   struct SeeLink
   {
-    SeeLink() : body(nullptr), unscaledBody(nullptr), volume(0.0) {}
+    SeeLink() : body(nullptr), unscaledBody(nullptr), volume(0.0), shadow(true) {}
     std::string      name;
     bodies::Body    *body;
     bodies::Body    *unscaledBody;
     tf2::Transform   constTransf;
     double           volume;
+    bool             shadow;
   };
 
   struct SortBodies
@@ -315,6 +320,7 @@ public:
     dir /= lng;
     for (auto &sl : bodies_)
     {
+      if (!sl.shadow) continue;
       std::vector<tf2::Vector3> hits;
       if (sl.body->intersectsRay(pt, dir, &hits, 1))
       {
@@ -414,6 +420,7 @@ protected:
 
         SeeLink sl;
         sl.name       = linfo.name;
+        sl.shadow     = linfo.shadow;
         sl.constTransf = urdfPose2TFTransform(coll->origin);
         sl.body       = bodies::createBodyFromShape(shape);
 
@@ -585,6 +592,7 @@ protected:
           // Ray intersect
           for (auto &sl : bodies_)
           {
+            if (!sl.shadow) continue;
             hits.clear();
             if (sl.body->intersectsRay(pt, dir, &hits, 1))
             {

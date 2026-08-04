@@ -112,7 +112,12 @@ self_filter:
       boom_link:
         box_scale: [1.0, 1.0, 1.1]
         box_padding: [0.03, 0.05, 0.08]
+        shadow: false
 ```
+
+`shadow` defaults to `true`. Set it to `false` when coarse collision geometry touches the
+sensor aperture and should still reject contained robot points without removing terrain rays
+behind that link.
 
 <details>
 <summary><strong>Launch arguments</strong></summary>
@@ -147,6 +152,7 @@ These are node defaults. The supplied launch file overrides some of them as show
 | `min_sensor_dist` | `0.01` | Minimum accepted distance from the sensor, in metres |
 | `publish_collision_shapes` | `true` | Publish markers when a subscriber exists |
 | `self_see_links.names` | `[]` | URDF links included in the self mask |
+| `self_see_links.<link>.shadow` | `true` | Reject rays intersecting this link; containment filtering is always active |
 
 </details>
 

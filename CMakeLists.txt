@@ -220,6 +220,15 @@ if(BUILD_TESTING)
   )
   ament_target_dependencies(test_self_filter ${robot_self_filter_test_dependencies})
 
+  ament_add_gtest(test_shadow_filtering
+    test/test_shadow_filtering.cpp
+  )
+  target_link_libraries(test_shadow_filtering
+    robot_geometric_shapes
+    ${PROJECT_NAME}
+  )
+  ament_target_dependencies(test_shadow_filtering ${robot_self_filter_test_dependencies})
+
   add_executable(robot_self_filter_benchmark
     test/benchmark_self_mask.cpp
   )

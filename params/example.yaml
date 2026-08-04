@@ -38,6 +38,10 @@ self_filter:
         - RH_WHEEL
 
       # Example custom overrides:
+      CABIN:
+        # Keep containment filtering without treating the coarse cabin box as a ray occluder.
+        shadow: false
+
       TELE:
         # If TELE is a box, define 3 scale factors and 3 paddings
         box_scale: [1.0, 1.0, 1.0]
