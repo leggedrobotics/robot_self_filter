@@ -12,6 +12,7 @@
 #include "robot_self_filter/self_see_filter.h"
 #include "robot_self_filter/point_ouster.h"
 #include "robot_self_filter/point_hesai.h"
+#include "robot_self_filter/point_livox_mid360.h"
 #include "robot_self_filter/point_pandar.h"
 #include "robot_self_filter/point_robosense.h"
 
@@ -29,6 +30,7 @@ namespace robot_self_filter
     HesaiSensor = 3,
     RobosenseSensor = 4,
     PandarSensor = 5,
+    LivoxMid360Sensor = 6,
   };
 
   class SelfFilterNode : public rclcpp::Node
@@ -98,6 +100,9 @@ namespace robot_self_filter
         break;
       case SensorType::PandarSensor:
         self_filter_ = std::make_shared<filters::SelfFilter<PointPandar>>(this->shared_from_this());
+        break;
+      case SensorType::LivoxMid360Sensor:
+        self_filter_ = std::make_shared<filters::SelfFilter<PointLivoxMid360>>(this->shared_from_this());
         break;
       default:
         RCLCPP_WARN(this->get_logger(),
@@ -191,6 +196,14 @@ namespace robot_self_filter
         if (!filter)
           return;
         publishShapesFromMask(filter->getSelfMaskPtr(), cloud->header);
+        break;
+      }
+      case SensorType::LivoxMid360Sensor:
+      {
+        auto sf_livox = std::dynamic_pointer_cast<filters::SelfFilter<PointLivoxMid360>>(self_filter_);
+        if (!sf_livox)
+          return;
+        publishShapesFromMask(sf_livox->getSelfMaskPtr(), cloud->header.frame_id);
         break;
       }
       default:

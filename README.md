@@ -86,8 +86,23 @@ ros2 launch robot_self_filter self_filter.launch.py \
   use_sim_time:=false
 ```
 
+<<<<<<< Updated upstream
 > [!TIP]
 > Subscribe an RViz `MarkerArray` display to `/collision_shapes` while tuning padding. Marker construction is skipped when no subscriber is present.
+=======
+### Launch Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `robot_description` | string | - | Robot URDF/XACRO description |
+| `filter_config` | string | - | Path to YAML configuration file |
+| `in_pointcloud_topic` | string | `/cloud_in` | Input point cloud topic |
+| `out_pointcloud_topic` | string | `/cloud_out` | Filtered point cloud topic |
+| `lidar_sensor_type` | int | `0` | Sensor type (0: XYZ, 1: XYZRGB, 2: Ouster, 3: Hesai, 4: Robosense, 5: Pandar, 6: Livox Mid-360) |
+| `zero_for_removed_points` | bool | `true` | Set filtered points to zero instead of removing |
+| `use_sim_time` | bool | `true` | Use simulation time |
+| `description_name` | string | `/robot_description` | Robot description parameter namespace |
+>>>>>>> Stashed changes
 
 ## Configuration
 
@@ -188,6 +203,7 @@ These are node defaults. The supplied launch file overrides some of them as show
 <details>
 <summary><strong>Troubleshooting</strong></summary>
 
+<<<<<<< Updated upstream
 | Symptom | Checks |
 | --- | --- |
 | Robot points remain | Check `sensor_frame`, TF connectivity, collision geometry, and link names; then increase padding carefully |
@@ -195,6 +211,17 @@ These are node defaults. The supplied launch file overrides some of them as show
 | No output cloud | Confirm the input topic, remappings, `robot_description`, and YAML node key (`self_filter`) |
 | High CPU usage | Reduce filtered links, simplify collision meshes, and disable unused marker subscriptions |
 | Organized output looks invalid | Check `keep_organized` together with `zero_for_removed_points` |
+=======
+| Value | Sensor Type | Point Type |
+|-------|-------------|------------|
+| 0 | Generic XYZ | `pcl::PointXYZ` |
+| 1 | Generic XYZRGB | `pcl::PointXYZRGB` |
+| 2 | Ouster | Custom Ouster point type |
+| 3 | Hesai | Custom Hesai point type |
+| 4 | Robosense | Custom Robosense point type |
+| 5 | Pandar | Custom Pandar point type |
+| 6 | Livox Mid-360 | PointXYZRTLT (`x`, `y`, `z`, `intensity`, `tag`, `line`, `timestamp`) |
+>>>>>>> Stashed changes
 
 </details>
 
@@ -231,4 +258,15 @@ Bug reports and focused pull requests are welcome. Please include a regression t
 
 Licensed under the [BSD 3-Clause License](LICENSE).
 
+<<<<<<< Updated upstream
 ROS 2 port and maintenance by [Lorenzo Terenzi](mailto:lterenzi@ethz.ch). Original ROS 1 implementation by Eitan Marder-Eppstein and contributors.
+=======
+## Maintainer
+
+Lorenzo Terenzi <lterenzi@ethz.ch>
+
+## Author
+
+ROS 2 version by Lorenzo Terenzi
+Original ROS 1 version by Eitan Marder-Eppstein
+>>>>>>> Stashed changes
