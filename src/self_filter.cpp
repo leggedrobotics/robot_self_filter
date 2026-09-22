@@ -203,7 +203,7 @@ namespace robot_self_filter
         auto sf_livox = std::dynamic_pointer_cast<filters::SelfFilter<PointLivoxMid360>>(self_filter_);
         if (!sf_livox)
           return;
-        publishShapesFromMask(sf_livox->getSelfMaskPtr(), cloud->header.frame_id);
+        publishShapesFromMask(sf_livox->getSelfMaskPtr(), cloud->header);
         break;
       }
       default:
