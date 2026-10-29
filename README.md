@@ -166,6 +166,7 @@ These are node defaults. The supplied launch file overrides some of them as show
 | `invert` | `false` | Keep robot points instead of removing them |
 | `min_sensor_dist` | `0.01` | Minimum accepted distance from the sensor, in metres |
 | `publish_collision_shapes` | `true` | Publish markers when a subscriber exists |
+| `reliable` | `false` | Reliable QoS on the input and output clouds instead of sensor-data (best effort); for clouds larger than the DDS shared-memory segment, e.g. a camera's organized cloud |
 | `self_see_links.names` | `[]` | URDF links included in the self mask |
 | `self_see_links.<link>.shadow` | `true` | Reject rays intersecting this link; containment filtering is always active |
 

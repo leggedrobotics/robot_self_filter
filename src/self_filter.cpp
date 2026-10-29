@@ -47,6 +47,10 @@ namespace robot_self_filter
       this->declare_parameter<std::string>("robot_description", "");
       this->declare_parameter<std::string>("in_pointcloud_topic", "/cloud_in");
       this->declare_parameter<bool>("publish_collision_shapes", true);
+      // Reliable instead of sensor-data (best effort) QoS on the input and output clouds. Fast DDS sends
+      // messages above its shared-memory segment (512 kB) over UDP, where best effort loses most large
+      // clouds (a camera's organized cloud is megabytes).
+      this->declare_parameter<bool>("reliable", false);
 
       sensor_frame_ = this->get_parameter("sensor_frame").as_string();
       use_rgb_ = this->get_parameter("use_rgb").as_bool();
@@ -55,6 +59,7 @@ namespace robot_self_filter
       sensor_type_ = static_cast<SensorType>(temp_sensor_type);
       in_topic_ = this->get_parameter("in_pointcloud_topic").as_string();
       publish_collision_shapes_ = this->get_parameter("publish_collision_shapes").as_bool();
+      reliable_ = this->get_parameter("reliable").as_bool();
       if (max_queue_size_ < 1)
       {
         RCLCPP_WARN(this->get_logger(), "max_queue_size must be positive; using 1");
@@ -69,11 +74,12 @@ namespace robot_self_filter
       RCLCPP_INFO(this->get_logger(), "  in_pointcloud_topic: %s", in_topic_.c_str());
       RCLCPP_INFO(this->get_logger(), "  publish_collision_shapes: %s",
                   publish_collision_shapes_ ? "true" : "false");
+      RCLCPP_INFO(this->get_logger(), "  reliable: %s", reliable_ ? "true" : "false");
 
       // Publish filtered cloud as sensor data QoS (BEST_EFFORT) for high-rate streams
       pointCloudPublisher_ =
           this->create_publisher<sensor_msgs::msg::PointCloud2>(
-              "cloud_out", rclcpp::SensorDataQoS());
+              "cloud_out", reliable_ ? rclcpp::QoS(rclcpp::KeepLast(1)).reliable() : rclcpp::SensorDataQoS());
 
       marker_pub_ =
           this->create_publisher<visualization_msgs::msg::MarkerArray>("collision_shapes", 1);
@@ -118,6 +124,8 @@ namespace robot_self_filter
       // Subscribe to input cloud with sensor data QoS (BEST_EFFORT)
       rclcpp::QoS input_qos = rclcpp::SensorDataQoS().keep_last(
         static_cast<std::size_t>(max_queue_size_));
+      if (reliable_)
+        input_qos.reliable();
       sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
           in_topic_,
           input_qos,
@@ -349,6 +357,7 @@ namespace robot_self_filter
     std::vector<std::string> frames_;
     std::string in_topic_;
     bool publish_collision_shapes_;
+    bool reliable_;
   };
 
 } // namespace robot_self_filter
